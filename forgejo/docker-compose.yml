@@ -1,0 +1,137 @@
+version: "3.9"
+
+networks:
+  forgejo:
+    driver: bridge
+
+services:
+  # ---------- ONE-SHOT para preparar pastas/ACLs ----------
+  init-host:
+    image: alpine:3.20
+    container_name: forgejo-init
+    command: >-
+      sh -euxc '
+      mkdir -p /opt/forgejo/data /opt/forgejo/config;
+      mkdir -p /opt/forgejo-db;
+      mkdir -p /opt/forgejo-runner/data;
+      mkdir -p /opt/forgejo-dind;
+
+      # Forgejo rootless (1000:1000)
+      chown -R 1000:1000 /opt/forgejo /opt/forgejo-runner || true;
+      chmod -R u+rwX,g+rwX /opt/forgejo /opt/forgejo-runner;
+
+      # Postgres (999:999)
+      chown -R 999:999 /opt/forgejo-db || true;
+      chmod 700 /opt/forgejo-db || true;
+
+      # dind storage (root)
+      chown -R 0:0 /opt/forgejo-dind || true;
+
+      echo "[init-host] OK";'
+    volumes:
+      - /opt:/opt
+    restart: "no"
+    networks:
+      - forgejo
+
+  # ---------- PostgreSQL ----------
+  db:
+    image: postgres:14
+    container_name: forgejo-db
+    restart: always
+    environment:
+      - TZ=Europe/Lisbon
+      - POSTGRES_USER=forgejo
+      - POSTGRES_PASSWORD=forgejo
+      - POSTGRES_DB=forgejo
+    networks:
+      - forgejo
+    volumes:
+      - /opt/forgejo-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U forgejo -d forgejo || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      init-host:
+        condition: service_completed_successfully
+
+  # ---------- Forgejo ----------
+  server:
+    image: codeberg.org/forgejo/forgejo:13-rootless
+    container_name: forgejo
+    user: "1000:1000"
+    environment:
+      - TZ=Europe/Lisbon
+      - USER_UID=1000
+      - USER_GID=1000
+
+      # DB
+      - FORGEJO__database__DB_TYPE=postgres
+      - FORGEJO__database__HOST=db:5432
+      - FORGEJO__database__NAME=forgejo
+      - FORGEJO__database__USER=forgejo
+      - FORGEJO__database__PASSWD=forgejo
+      - FORGEJO__database__SSL_MODE=disable
+
+      # SERVER / URLs
+      - FORGEJO__server__DOMAIN=forgejo.lbtec.org
+      - FORGEJO__server__ROOT_URL=http://forgejo.lbtec.org/
+      - FORGEJO__server__PROTOCOL=http
+      - FORGEJO__server__OFFLINE_MODE=false
+
+      # SSH (rootless -> 2222 interno; mapeado para 222 externo)
+      - FORGEJO__server__START_SSH_SERVER=true
+      - FORGEJO__server__SSH_DOMAIN=forgejo.lbtec.org
+      - FORGEJO__server__SSH_LISTEN_PORT=2222
+      - FORGEJO__server__SSH_PORT=222
+    restart: always
+    networks:
+      - forgejo
+    volumes:
+      - /opt/forgejo/data:/var/lib/gitea
+      - /opt/forgejo/config:/etc/gitea
+      - /etc/timezone:/etc/timezone:ro
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - "3000:3000"
+      - "222:2222"
+    depends_on:
+      init-host:
+        condition: service_completed_successfully
+      db:
+        condition: service_healthy
+
+  # ---------- Docker-in-Docker para o runner ----------
+  dind:
+    image: docker:28.3.3-dind@sha256:c0872aae4791ff427e6eda52769afa04f17b5cf756f8267e0d52774c99d5c9de
+    container_name: forgejo-dind
+    privileged: true
+    restart: unless-stopped
+    command: ["dockerd", "-H", "tcp://0.0.0.0:2375", "--tls=false"]
+    networks:
+      - forgejo
+    volumes:
+      - /opt/forgejo-dind:/var/lib/docker
+    depends_on:
+      init-host:
+        condition: service_completed_successfully
+
+  # ---------- Runner ----------
+  runner:
+    image: code.forgejo.org/forgejo/runner:9.0.3@sha256:9ae7e65c14e7d49549432cbbbb2ed95e5e04ede234feb28bfd70a2dc04385263
+    container_name: forgejo-runner
+    user: "1000:1000"
+    restart: unless-stopped
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+    networks:
+      - forgejo
+    volumes:
+      - /opt/forgejo-runner/data:/data
+      - /opt/forgejo-runner/config.yaml:/config.yaml:ro
+    depends_on:
+      dind:
+        condition: service_started
+    command: ["/bin/sh", "-c", "sleep 5; forgejo-runner daemon --config /config.yaml"]

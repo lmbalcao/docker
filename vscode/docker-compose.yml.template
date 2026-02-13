@@ -1,0 +1,116 @@
+version: "3.7"
+
+services:
+
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+
+    # teste teste teste
+    # LIGADO AO GANESHA e ao fstab, neste caso:
+    # Ganesha tem /srv/dev-sata24/data
+    # sao partilhados 
+    volumes:
+      - /opt/config:/config    
+      - /opt/scripts:/opt/scripts
+      - /opt/secrets:/opt/secrets
+      - /mnt/data:/mnt/data
+      
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        
+        echo "# Instalação de Dependências #"
+        apk add curl
+        echo "# [OK] #"
+        
+        echo "# Criação de pastas base #"
+        mkdir -p \
+          /mnt/data \
+          /mnt/data/workspace \
+          /opt/config/config \
+          /opt/config/scripts \
+          /opt/config/secrets
+        echo "# [OK] #"
+        
+        echo "# Definição de Permissões #"
+        chown -R 1000:1000 \
+          /mnt/data \
+          /mnt/data/workspace \
+          /opt/config \
+          /opt/scripts \
+          /opt/secrets
+        
+        chown -R 1000:1000 \
+          /mnt/data \
+          /mnt/data/workspace \
+          /opt/config \
+          /opt/scripts \
+          /opt/secrets || true
+        echo "# [OK] #"
+          
+        # echo "# Criação de mounts remotos #"
+        # add_fstab_line() {
+        #   local line="$1"
+        #   local esc
+        #   esc=$(printf '%s\n' "$line" | sed 's/[.[\*^$()+?{}|/]/\\&/g')
+        #   grep -qE "^[[:space:]]*$esc\$" /etc/fstab || echo "$line" >> /etc/fstab
+        # }
+        
+        # add_fstab_line "192.168.55.100:/vscode-data   /mnt/data    nfs   vers=4.1,rsize=262144,wsize=262144,hard,noatime   0  0"
+        # add_fstab_line "192.168.55.100:/vscode-config /mnt/config  nfs   vers=4.1,rsize=262144,wsize=262144,hard,noatime   0  0"
+
+        # /usr/bin/systemctl daemon-reload
+        # mount -a
+        # echo "# [OK] #"
+        
+        # echo "# Criar .sopsrc caso não exista #"
+        # touch /opt/secrets/.sopsrc
+        # chown 1000:1000 /opt/secrets/.sopsrc
+        # echo "# [OK] #"
+
+        # echo "# Instalar SOPS #"
+        # curl -LO https://github.com/getsops/sops/releases/download/v3.11.0/sops-v3.11.0.linux.amd64
+        # mv sops-v3.11.0.linux.amd64 /mnt/config/scripts/sops
+        # chmod +x /opt/scripts/sops
+        # echo "# [OK] #"
+        
+        # echo "# Verificar locais #"        
+        # ls -la /mnt
+        # ls -la /mnt/config
+        # ls -la /mnt/data
+        # echo "# [OK] #"
+        
+        # echo "# Verificar existencia de sops #"
+        # ls -la /mnt/scripts/sops
+        # echo "# [OK] #"
+
+        # echo "# Verificar existencia de .sopsrc #"
+        # cat /mnt/secrets/.sopsrc
+        # echo "# [OK] #"
+        
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Lisbon
+      - PASSWORD=password #optional
+      - HASHED_PASSWORD= #optional
+      - SUDO_PASSWORD=password #optional
+      - SUDO_PASSWORD_HASH= #optional
+      - PROXY_DOMAIN=vscode.lbtec.org #optional
+      - DEFAULT_WORKSPACE=/mnt/data/workspace #optional
+      - PWA_APPNAME=code-server #optional
+    volumes:
+      - /opt/config:/config    
+      - /opt/scripts:/opt/scripts
+      - /opt/secrets:/opt/secrets
+      - /mnt/data:/mnt/data
+    ports:
+      - 8443:8443
+    restart: unless-stopped
+

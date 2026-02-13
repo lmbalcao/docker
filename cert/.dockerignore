@@ -1,0 +1,9 @@
+examples/
+Makefile
+README.md
+LICENSE.txt
+.git/
+.vscode/
+.gitignore
+.github/
+.act/

@@ -1,0 +1,84 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: paperless
+spec:
+  selector: { app: paperless }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paperless
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: paperless } }
+  template:
+    metadata: { labels: { app: paperless } }
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: init-nfs-paperless
+          image: busybox:1.36
+          command: ["sh", "-c", "set -eux; mkdir -p /mnt/data/data /mnt/data/media /mnt/data/export /mnt/data/consume"]
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          volumeMounts:
+            - name: paperless-rwx
+              mountPath: /mnt/data
+      containers:
+        - name: paperless
+          image: ghcr.io/paperless-ngx/paperless-ngx:latest
+          env:
+            - name: PAPERLESS_REDIS
+              value: redis://redis.paperless.svc.cluster.local:6379
+            - name: PAPERLESS_DBENGINE
+              value: postgresql
+            - name: PAPERLESS_DBHOST
+              value: postgres.paperless.svc.cluster.local
+            - name: PAPERLESS_DBNAME
+              value: paperless
+            - name: PAPERLESS_DBUSER
+              value: paperless
+            - name: PAPERLESS_DBPASS
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secret
+                  key: db-password
+            - name: PAPERLESS_ADMIN_USER
+              value: admin
+            - name: PAPERLESS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: paperless-secret
+                  key: admin-password
+            - name: PAPERLESS_TIME_ZONE
+              value: Europe/Lisbon
+          ports:
+            - containerPort: 8000
+              name: http
+          volumeMounts:
+            - name: paperless-rwx
+              mountPath: /usr/src/paperless/data
+              subPath: data
+            - name: paperless-rwx
+              mountPath: /usr/src/paperless/media
+              subPath: media
+            - name: paperless-rwx
+              mountPath: /usr/src/paperless/export
+              subPath: export
+            - name: paperless-rwx
+              mountPath: /usr/src/paperless/consume
+              subPath: consume
+      volumes:
+        - name: paperless-rwx
+          persistentVolumeClaim:
+            claimName: paperless-rwx

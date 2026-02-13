@@ -1,0 +1,6 @@
+cert-manager:
+  installCRDs: true
+  # Evita conflito de election
+  global:
+    leaderElection:
+      namespace: cert-manager

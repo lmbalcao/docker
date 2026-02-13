@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: code-server
+  labels: { app.kubernetes.io/name: vscode }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: vscode }
+  ports:
+    - name: http
+      port: 80
+      targetPort: http        # mapeia para a porta nomeada no pod (8443)

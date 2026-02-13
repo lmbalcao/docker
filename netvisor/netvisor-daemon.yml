@@ -1,0 +1,128 @@
+services:
+  daemon25:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon25
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=fcaaf45369114b63ac845368bec70a72
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.25.155
+      - NETVISOR_NAME=netvisor-daemon25
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=62767c4a-c29a-49b7-8a04-2d953250320a
+    volumes:
+      - daemon-config25:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  daemon30:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon30
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=d835cc53ee2848d3b175fb3e2554b89d
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.30.155
+      - NETVISOR_NAME=netvisor-daemon30
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=c7d07830-8f8a-4118-bec9-0e7e8f59cefd
+    volumes:
+      - daemon-config30:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  daemon35:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon35
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=faaa290b90d1420c9500d14c6411852b
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.35.155
+      - NETVISOR_NAME=netvisor-daemon35
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=b0fe9b9e-ff23-47ee-a2a7-295fba1ae8d1
+    volumes:
+      - daemon-config35:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  daemon50:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon50
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=fb2638042a534c5eb6ba6ae663e54567
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.50.155
+      - NETVISOR_NAME=netvisor-daemon50
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=eb7c1a2a-2ee6-47df-ac20-9510132cbe59
+    volumes:
+      - daemon-config50:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+  daemon55:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon55
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=75ebb4b6da9c4e1e90e81b342c85f51f
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.55.155
+      - NETVISOR_NAME=netvisor-daemon55
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=4aa61b84-daac-479b-8c95-4c773d3ace8d
+    volumes:
+      - daemon-config55:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+  daemon60:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon60
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      - NETVISOR_SERVER_URL=http://192.168.17.155:60072
+      - NETVISOR_DAEMON_API_KEY=13fc7889bdf9458888ae681a4b704f82
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=192.168.60.155
+      - NETVISOR_NAME=netvisor-daemon60
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=c7d07830-8f8a-4118-bec9-0e7e8f59cefd
+    volumes:
+      - daemon-config60:/root/.config/daemon
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      
+volumes:
+  daemon-config25:
+  daemon-config30:
+  daemon-config35:
+  daemon-config50:
+  daemon-config55:
+  daemon-config60:

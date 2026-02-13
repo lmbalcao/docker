@@ -1,0 +1,27 @@
+services:
+  daemon:
+    image: mayanayza/netvisor-daemon:latest
+    container_name: netvisor-daemon
+    network_mode: host
+    privileged: true
+    restart: unless-stopped
+    environment:
+      # Server connection
+      - NETVISOR_SERVER_URL=http://192.168.55.155:60072
+
+      # Daemon configuration
+      - NETVISOR_DAEMON_API_KEY=7882d51ecd3748ba95060b10a8fc487f
+      - NETVISOR_PORT=60073
+      - NETVISOR_MODE=Push
+      - NETVISOR_BIND_ADDRESS=0.0.0.0
+      - NETVISOR_NAME=netvisor-daemon
+      - NETVISOR_LOG_LEVEL=info
+      - NETVISOR_HEARTBEAT_INTERVAL=30
+      - NETVISOR_NETWORK_ID=4aa61b84-daac-479b-8c95-4c773d3ace8d
+    volumes:
+      - daemon-config:/root/.config/daemon
+      # Comment out the line below to disable docker discovery
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+volumes:
+  daemon-config:

@@ -1,0 +1,10 @@
+# Em K8s 1.24+, os tokens não são criados automaticamente. Este Secret cria um token
+# ligado à SA kubeapps-admin para login inicial no GUI.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeapps-admin-token
+  namespace: kubeapps
+  annotations:
+    kubernetes.io/service-account.name: kubeapps-admin
+type: kubernetes.io/service-account-token

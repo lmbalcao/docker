@@ -1,0 +1,20 @@
+---
+version: '3.3'
+services:
+  rdtclient:
+    image: rogerfar/rdtclient
+    container_name: rdtclient
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/config/rdtclient:/data/db
+      - /mnt/nas/downloads:/data/downloads
+    logging:
+       driver: json-file
+       options:
+          max-size: 10m
+    ports:
+      - 6500:6500
+    restart: unless-stopped

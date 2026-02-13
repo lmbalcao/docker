@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-immich-rwx
+spec:
+  storageClassName: ""         # <- sem StorageClass (PV estático)
+  capacity:
+    storage: 5Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: 192.168.55.100     # <- o teu NAS
+    path: /immich              # <- caminho NFS
+  mountOptions:
+    - nfsvers=4.1
+    - rsize=262144
+    - wsize=262144
+    - hard
+    - noatime

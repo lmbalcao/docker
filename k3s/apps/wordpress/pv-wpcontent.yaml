@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-wordpress-wpcontent-rwx
+spec:
+  storageClassName: ""   # explicitar "sem SC"
+  capacity:
+    storage: 2Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: 192.168.55.100
+    path: /wordpress
+  mountOptions:
+    - nfsvers=4.1
+    - rsize=262144
+    - wsize=262144
+    - hard
+    - noatime

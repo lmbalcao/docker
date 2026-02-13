@@ -1,0 +1,42 @@
+
+services:
+  homarr:
+    container_name: homarr
+#    uuser: 1000:1000
+    image: ghcr.io/homarr-labs/homarr:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/homarr/appdata:/appdata
+#      - /opt/homarr/appdata/nginx:/etc/nginx
+#      - /opt/homarr/appdata/redis:/var/lib/redis
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Lisbon
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+      - AUTH_PROVIDERS=oidc
+      - AUTH_OIDC_CLIENT_ID=XPTO
+      - AUTH_OIDC_CLIENT_SECRET=XPTO
+      - AUTH_OIDC_ISSUER=https://auth.XPTO.org/application/o/homarr/
+      - AUTH_OIDC_URI=https://auth.XPTO.org/application/o/authorize
+      - AUTH_OIDC_CLIENT_NAME=authentik
+      - OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING=true
+      - AUTH_LOGOUT_REDIRECT_URL=https://auth.XPTO.org/application/o/homarr/end-session/
+      - OIDC_SLUG=homarr
+      - AUTH_DOMAIN=auth.XPTO.org
+      - HOMARR_FQDN=www.XPTO.org
+      - AUTH_LOGOUT_REDIRECT_URL=https://www.XPTO.org
+      - NEXTAUTH_URL=https://www.XPTO.org
+      - BASE_URL=https://www.XPTO.org
+      - AUTH_OIDC_AUTO_LOGIN=false
+      - ADMIN_GROUP=authentik Admins
+      - AUTH_OIDC_GROUPS_ATTRIBUTE=groups
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "10m"
+    ports:
+      - '7575:7575'

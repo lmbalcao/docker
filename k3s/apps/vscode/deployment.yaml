@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: code-server
+  labels: { app.kubernetes.io/name: vscode }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: vscode }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: vscode }
+    spec:
+      containers:
+        - name: code-server
+          image: lscr.io/linuxserver/code-server:version-4.104.0-ls296   # evita :latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: "Europe/Lisbon"
+            - name: PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: code-server-secret
+                  key: PASSWORD
+          ports:
+            - containerPort: 8443
+              name: http                       # <- era "https"
+          volumeMounts:
+            - name: config
+              mountPath: /config
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http                       # <- usar o nome da porta
+              scheme: HTTP                     # <- era HTTPS
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+              scheme: HTTP                     # <- era HTTPS
+            initialDelaySeconds: 40
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "2", memory: 2Gi }
+      volumes:
+        - name: config
+          emptyDir: {}

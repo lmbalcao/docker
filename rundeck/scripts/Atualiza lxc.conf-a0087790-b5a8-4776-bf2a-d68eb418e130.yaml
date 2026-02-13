@@ -1,0 +1,98 @@
+- defaultTab: nodes
+  description: Popula /tmp/lxc.conf
+  executionEnabled: true
+  id: a0087790-b5a8-4776-bf2a-d68eb418e130
+  loglevel: INFO
+  maxMultipleExecutions: '0'
+  multipleExecutions: true
+  name: Atualiza lxc.conf
+  nodeFilterEditable: false
+  nodefilters:
+    dispatch:
+      excludePrecedence: true
+      keepgoing: false
+      rankOrder: ascending
+      successOnEmptyNodeFilter: false
+      threadcount: '1'
+    filter: tags:proxmox
+  nodesSelectedByDefault: true
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: gera listagem em cada proxmox /tmp/lxc.conf
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        NODE="$(hostname)"
+        OUT="/tmp/lxc.conf"
+        TMP="${OUT}.tmp"
+
+        {
+          echo "# gerado automaticamente em $(date -Is)"
+          echo
+        } > "$TMP"
+
+        pct list | awk 'NR>1 {print $1, $2}' | while read -r VMID STATUS; do
+          [ "$STATUS" = "running" ] || continue
+
+          pct exec "$VMID" -- sh -s -- "$NODE" "$VMID" <<'REMOTE' >> "$TMP" || true
+        set -eu
+        NODE="$1"
+        VMID="$2"
+
+        STATE="/tmp/base.tmp"
+        ct_hostname="$(hostname 2>/dev/null || echo unknown)"
+
+        # defaults
+        ip=""
+        type="maquina_linux"
+        docker="false"
+        portainer="false"
+
+        # carrega apenas se existir
+        if [ -f "$STATE" ]; then
+          # shellcheck disable=SC1090
+          . "$STATE" || true
+        fi
+
+        # fallback: se ip não vier do base.tmp, usa um valor neutro
+        [ -n "${ip:-}" ] || ip="0.0.0.0"
+
+        tags="linux,lxc"
+        [ "${docker:-false}" = "true" ] && tags="${tags},docker"
+        [ "${portainer:-false}" = "true" ] && tags="${tags},portainer"
+
+        cat <<YAML
+        ${ct_hostname}:
+          hostname: "${ip}"
+          username: "root"
+          tags: "${tags}"
+          proxmoxNode: "${NODE}"
+          vmid: "${VMID}"
+          ct_hostname: "${ct_hostname}"
+          type: "${type:-maquina_linux}"
+          docker: "${docker:-false}"
+          portainer: "${portainer:-false}"
+
+        YAML
+        REMOTE
+        done
+
+        mv -f "$TMP" "$OUT"
+        cat "$OUT"
+    - description: cria nova versão de lxc.conf
+      jobref:
+        childNodes: true
+        group: ''
+        name: Atualiza lxc.conf auxiliar
+        uuid: e7c952d0-8f91-4be5-8aff-d4ebee4526a0
+    keepgoing: false
+    strategy: sequential
+  timeZone: Europe/Lisbon
+  uuid: a0087790-b5a8-4776-bf2a-d68eb418e130
+

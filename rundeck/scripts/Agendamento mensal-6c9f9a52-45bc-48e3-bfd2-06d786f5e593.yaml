@@ -1,0 +1,49 @@
+- defaultTab: nodes
+  description: |-
+    Execução de livros mensais.
+
+    Livro apenas de execução de outros trabalhos que devem ser adicionados tendo em conta a ordem existente.
+  executionEnabled: true
+  id: 6c9f9a52-45bc-48e3-bfd2-06d786f5e593
+  loglevel: INFO
+  name: Agendamento mensal
+  nodeFilterEditable: false
+  plugins:
+    ExecutionLifecycle: {}
+  schedule:
+    month: '*'
+    time:
+      hour: '3'
+      minute: '0'
+      seconds: '0'
+    weekday:
+      day: 7#1
+    year: '*'
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - description: Popula LXC
+      jobref:
+        childNodes: true
+        group: ''
+        ignoreNotifications: true
+        name: Popula lxc.conf
+        uuid: a0087790-b5a8-4776-bf2a-d68eb418e130
+    - description: Garante Estrutura
+      jobref:
+        childNodes: true
+        group: ''
+        ignoreNotifications: true
+        name: Garante estrutura
+        uuid: 49059950-606c-4e26-a030-e94fc5fc2ed0
+    - description: Updates de Sistema
+      jobref:
+        childNodes: true
+        group: ''
+        ignoreNotifications: true
+        name: Updates de sistema
+        uuid: ddb6cb3a-d903-4866-a873-3bb032c6f7b8
+    keepgoing: false
+    strategy: node-first
+  uuid: 6c9f9a52-45bc-48e3-bfd2-06d786f5e593
+

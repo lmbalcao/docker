@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    ports:
+      - 8191:8191
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/flaresolverr:/config
+    restart: unless-stopped

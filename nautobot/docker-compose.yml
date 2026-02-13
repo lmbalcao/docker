@@ -1,0 +1,188 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:15
+    container_name: nautobot-db
+    user: "999:1000"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nautobot
+      POSTGRES_USER: nautobot
+      POSTGRES_PASSWORD: change_me_strong_pwd
+      TZ: Europe/Lisbon
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nautobot -d nautobot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - /opt/nautobot/db_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    container_name: nautobot-redis
+    user: "999:1000"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    volumes:
+      - /opt/nautobot/redis_data:/data
+
+  nautobot-init:
+    image: networktocode/nautobot:latest
+    container_name: nautobot-init
+    user: "1000:1000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NAUTOBOT_SECRET_KEY: "PLEASE_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+      NAUTOBOT_DEBUG: "False"
+      NAUTOBOT_ALLOWED_HOSTS: "nautobot.lbtec.org,localhost,127.0.0.1"
+      NAUTOBOT_TIME_ZONE: "Europe/Lisbon"
+      NAUTOBOT_DB_NAME: "nautobot"
+      NAUTOBOT_DB_USER: "nautobot"
+      NAUTOBOT_DB_PASSWORD: "change_me_strong_pwd"
+      NAUTOBOT_DB_HOST: "db"
+      NAUTOBOT_DB_PORT: "5432"
+      NAUTOBOT_REDIS_HOST: "redis"
+      NAUTOBOT_REDIS_PORT: "6379"
+      NAUTOBOT_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NAUTOBOT_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      NAUTOBOT_CACHE_BACKEND: "redis://redis:6379/2"
+      NAUTOBOT_CREATE_SUPERUSER: "true"
+      NAUTOBOT_SUPERUSER_NAME: "admin"
+      NAUTOBOT_SUPERUSER_EMAIL: "admin@lbtec.org"
+      NAUTOBOT_SUPERUSER_PASSWORD: "change_me_admin_pwd"
+    command: >
+      sh -lc "
+        mkdir -p /opt/nautobot/media /opt/nautobot/reports /opt/nautobot/jobs &&
+        nautobot-server migrate &&
+        nautobot-server collectstatic --noinput &&
+        nautobot-server post_upgrade
+      "
+    restart: "no"
+    volumes:
+      - /opt/nautobot:/opt/nautobot
+     # - /opt/nautobot/reports:/opt/nautobot/reports
+#      - /opt/nautobot/jobs:/opt/nautobot/jobs
+    #  - /opt/nautobot/git:/opt/nautobot/git
+   #   - /opt/nautobot/git:/opt/nautobot/static
+
+  nautobot:
+    image: networktocode/nautobot:latest
+    container_name: nautobot-web
+    user: "1000:1000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nautobot-init:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    environment:
+      NAUTOBOT_SECRET_KEY: "PLEASE_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+      NAUTOBOT_DEBUG: "False"
+      NAUTOBOT_ALLOWED_HOSTS: "nautobot.lbtec.org,localhost,127.0.0.1"
+      NAUTOBOT_TIME_ZONE: "Europe/Lisbon"
+      NAUTOBOT_DB_NAME: "nautobot"
+      NAUTOBOT_DB_USER: "nautobot"
+      NAUTOBOT_DB_PASSWORD: "change_me_strong_pwd"
+      NAUTOBOT_DB_HOST: "db"
+      NAUTOBOT_DB_PORT: "5432"
+      NAUTOBOT_REDIS_HOST: "redis"
+      NAUTOBOT_REDIS_PORT: "6379"
+      NAUTOBOT_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NAUTOBOT_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      NAUTOBOT_CACHE_BACKEND: "redis://redis:6379/2"
+      NAUTOBOT_PORT: "8080"
+    command: >
+      sh -lc "nautobot-server migrate &&
+              gunicorn --workers 3 --bind 0.0.0.0:8080 nautobot.wsgi"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/login/ >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 20
+    volumes:
+ #     - /opt/nautobot/media:/opt/nautobot/media
+      - /opt/nautobot:/opt/nautobot
+#      - /opt/nautobot/reports:/opt/nautobot/reports
+    #  - /opt/nautobot/jobs:/opt/nautobot/jobs
+  #    - /opt/nautobot/git:/opt/nautobot/git
+
+  worker:
+    image: networktocode/nautobot:latest
+    container_name: nautobot-worker
+    user: "1000:1000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      nautobot:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      NAUTOBOT_SECRET_KEY: "PLEASE_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+      NAUTOBOT_DEBUG: "False"
+      NAUTOBOT_DB_NAME: "nautobot"
+      NAUTOBOT_DB_USER: "nautobot"
+      NAUTOBOT_DB_PASSWORD: "change_me_strong_pwd"
+      NAUTOBOT_DB_HOST: "db"
+      NAUTOBOT_DB_PORT: "5432"
+      NAUTOBOT_REDIS_HOST: "redis"
+      NAUTOBOT_REDIS_PORT: "6379"
+      NAUTOBOT_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NAUTOBOT_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      NAUTOBOT_CACHE_BACKEND: "redis://redis:6379/2"
+    command: ["nautobot-server", "celery", "worker", "-l", "INFO"]
+    volumes:
+     # - /opt/nautobot/media:/opt/nautobot/media
+      - /opt/nautobot:/opt/nautobot
+ #     - /opt/nautobot/reports:/opt/nautobot/reports
+  #    - /opt/nautobot/jobs:/opt/nautobot/jobs
+ #     - /opt/nautobot/git:/opt/nautobot/git
+
+  beat:
+    image: networktocode/nautobot:latest
+    container_name: nautobot-beat
+    user: "1000:1000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+      nautobot:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      NAUTOBOT_SECRET_KEY: "PLEASE_CHANGE_THIS_TO_A_LONG_RANDOM_SECRET"
+      NAUTOBOT_DEBUG: "False"
+      NAUTOBOT_DB_NAME: "nautobot"
+      NAUTOBOT_DB_USER: "nautobot"
+      NAUTOBOT_DB_PASSWORD: "change_me_strong_pwd"
+      NAUTOBOT_DB_HOST: "db"
+      NAUTOBOT_DB_PORT: "5432"
+      NAUTOBOT_REDIS_HOST: "redis"
+      NAUTOBOT_REDIS_PORT: "6379"
+      NAUTOBOT_CELERY_BROKER_URL: "redis://redis:6379/0"
+      NAUTOBOT_CELERY_RESULT_BACKEND: "redis://redis:6379/1"
+      NAUTOBOT_CACHE_BACKEND: "redis://redis:6379/2"
+    command: ["nautobot-server", "celery", "beat", "-l", "INFO"]
+    volumes:
+     # - /opt/nautobot/media:/opt/nautobot/media
+      - /opt/nautobot:/opt/nautobot
+#      - /opt/nautobot/reports:/opt/nautobot/reports
+  #    - /opt/nautobot/jobs:/opt/nautobot/jobs
+#      - /opt/nautobot/git:/opt/nautobot/git

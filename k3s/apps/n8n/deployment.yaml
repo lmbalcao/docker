@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: n8n }
+  template:
+    metadata: { labels: { app: n8n } }
+    spec:
+      containers:
+        - name: n8n
+          image: n8nio/n8n:latest
+          env:
+            - name: N8N_PORT
+              value: "5678"
+            - name: N8N_HOST
+              value: "n8n.lbtec.org"
+            - name: WEBHOOK_URL
+              value: "https://n8n.lbtec.org/"
+            - name: GENERIC_TIMEZONE
+              value: "Europe/Lisbon"
+          ports:
+            - containerPort: 5678
+              name: http
+          volumeMounts:
+            - name: n8n-data
+              mountPath: /home/node/.n8n
+      volumes:
+        - name: n8n-data
+          emptyDir: {}

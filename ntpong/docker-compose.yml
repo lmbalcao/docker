@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: ntopng-redis
+    command: redis-server --appendonly yes --requirepass redispassword
+    restart: unless-stopped
+    volumes:
+      - /opt/redis:/data
+    networks:
+      ntop:
+        ipv4_address: 172.20.0.5
+
+  netflow2ng:
+    image: synfinatic/netflow2ng
+    container_name: netflow2ng
+    entrypoint: ["/netflow2ng"]  # adiciona --level=debug se precisares
+    restart: unless-stopped
+    ports:
+      - "2055:2055/udp"
+      - "8080:8080/tcp"   # recebe NetFlow/sFlow/IPFIX dos routers/exporters
+    networks:
+      ntop:
+        ipv4_address: 172.20.0.3
+
+  ntopng:
+    image: ntop/ntopng:latest
+    container_name: ntopng
+    restart: unless-stopped
+    depends_on:
+      - netflow2ng
+      - redis
+    ports:
+      - "3000:3000"       # UI Web (http://<host>:3000)
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    command:
+      - "-i"
+      - "tcp://172.20.0.3:5556"                     # ingestão do netflow2ng
+      - "--redis"
+      - "172.20.0.5:6379:redispassword"             # cache/estado em Redis
+      - "--community"
+      - "-m"
+      - "192.168.0.0/16"                            # redes “locais” (192.168.*.*)
+    # Se tiveres licença, descomenta:
+    # volumes:
+    #   - ./ntopng.license:/etc/ntopng.license:ro
+    networks:
+      ntop:
+        ipv4_address: 172.20.0.2
+
+networks:
+  ntop:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/28

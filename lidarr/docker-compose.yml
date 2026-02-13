@@ -1,0 +1,18 @@
+version: "3.8"
+
+services:
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    ports:
+      - "8686:8686"
+    environment:
+      PUID: 1001
+      PGID: 1001
+      TZ: Europe/Lisbon
+    volumes:
+      - /opt/lidarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+      - /mnt/nas/downloads:/data/downloads
+    restart: unless-stopped

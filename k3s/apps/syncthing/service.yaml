@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: syncthing
+  labels:
+    app.kubernetes.io/name: syncthing
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: syncthing
+  ports:
+    - name: gui
+      port: 80
+      targetPort: gui

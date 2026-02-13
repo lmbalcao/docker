@@ -1,0 +1,11 @@
+apiVersion: v2
+name: kubeapps-wrapper
+description: Helm wrapper para instalar o Kubeapps via Argo CD
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: kubeapps
+    repository: https://charts.bitnami.com/bitnami
+    # Podes fixar uma versão major que exista no momento. 14.* é típico e estável.
+    version: ">=12.0.0 <13.0.0"

@@ -1,0 +1,28 @@
+# ── Config base ────────────────────────────────────────────────────────────────
+# Vamos expor via Traefik (Ingress). O Service interno fica ClusterIP.
+kubeapps:
+  frontend:
+    service:
+      type: ClusterIP
+
+  # Ativa o Ingress do próprio chart (mais simples que criar um Ingress à parte)
+  ingress:
+    enabled: true
+    ingressClassName: traefik
+    hostname: kubeapps.lbtec.org
+    # Se quiseres TLS já:
+    # tls: true
+    # extraTls:
+    #   - hosts:
+    #       - kubeapps.lbtec.org
+    #     secretName: kubeapps-tls
+
+  # (opcional) Repositórios Helm extra visíveis no Kubeapps
+  # assetsvc:
+  #   extraRepos:
+  #     - name: bitnami
+  #       url: https://charts.bitnami.com/bitnami
+
+# ── RBAC do Kubeapps (mínimo para login por token) ─────────────────────────────
+# Mantemos RBAC fora do chart upstream criando recursos à parte (templates/).
+# NOTA: Para primeiro acesso usamos uma ServiceAccount com cluster-admin (em homelab).

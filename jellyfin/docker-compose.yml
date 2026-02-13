@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports:
+      - "8096:8096"
+    environment:
+      PUID: 1001
+      PGID: 1001
+      TZ: Europe/Lisbon
+    volumes:
+      - /opt/jellyfin:/config
+      - /mnt/nas/media:/media
+      # - /dev/dri:/dev/dri
+    restart: unless-stopped

@@ -1,0 +1,43 @@
+name: minio
+
+services:
+  # init-host:
+  #   image: alpine:3.21
+  #   container_name: minio_init
+  #   restart: "no"
+  #   volumes:
+  #     - /mnt/minio/minio:/data
+  #   entrypoint:
+  #     - /bin/sh
+  #     - -lc
+  #     - |
+  #       set -eu
+  #       echo ">> Criar pasta de dados /mnt/minio/minio e ajustar permissões"
+  #       mkdir -p /mnt/minio/minio
+  #       chmod 750 /data
+  #       chown -R 1008:1008 /mnt/minio/minio || true
+  #       echo ">> init-host concluído"
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z-cpuv1
+    user: "1008:1008"
+    container_name: minio
+    # depends_on:
+    #   - init-host
+    restart: unless-stopped
+    ports:
+      - "9002:9000" # API S3
+      - "9003:9001" # Consola Web
+    environment:
+      MINIO_ROOT_USER: "minioadmin"
+      MINIO_ROOT_PASSWORD: "Troca-ESTE_PWD_por_um_muito_forte!"
+      # Se no futuro ficares atrás de proxy, podes definir:
+      # MINIO_SERVER_URL: "https://s3.lbtec.org"
+      # MINIO_BROWSER_REDIRECT_URL: "https://console.lbtec.org"
+    command: server /data --console-address ":9001"
+    volumes:
+      - /mnt/minio/minio:/data
+    # Se a pasta no host pertencer a 1000:1000 e quiseres refletir isso no container:
+    # user: "1000:1000"
+    security_opt:
+      - no-new-privileges:true

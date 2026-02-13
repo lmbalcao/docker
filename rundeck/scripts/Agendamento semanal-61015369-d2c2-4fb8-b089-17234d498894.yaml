@@ -1,0 +1,32 @@
+- defaultTab: nodes
+  description: |-
+    Execução de livros semanais.
+
+    Livro apenas de execução de outros trabalhos que devem ser adicionados tendo em conta a ordem existente.
+  executionEnabled: true
+  id: 61015369-d2c2-4fb8-b089-17234d498894
+  loglevel: INFO
+  name: Agendamento semanal
+  nodeFilterEditable: false
+  plugins:
+    ExecutionLifecycle: {}
+  schedule:
+    month: '*'
+    time:
+      hour: '02'
+      minute: '00'
+      seconds: '0'
+    weekday:
+      day: '6'
+    year: '*'
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - jobref:
+        group: ''
+        name: Atualiza lxc.conf
+        uuid: a0087790-b5a8-4776-bf2a-d68eb418e130
+    keepgoing: false
+    strategy: node-first
+  uuid: 61015369-d2c2-4fb8-b089-17234d498894
+

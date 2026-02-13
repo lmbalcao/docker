@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  # 1) Prepara o ficheiro de credenciais da Cloudflare dentro do volume
+  init-cf-ini:
+    image: alpine:3.21
+    restart: "no"
+    environment:
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN:?definir_no_Coolify}
+    volumes:
+      - /data/coolify/proxy/certs:/etc/letsencrypt
+    command: >
+      /bin/sh -lc 'set -e; umask 077;
+      printf "%s = %s\n" dns_cloudflare_api_token "$CLOUDFLARE_API_TOKEN" > /etc/letsencrypt/cf.ini;
+      chmod 600 /etc/letsencrypt/cf.ini;
+      ls -l /etc/letsencrypt/cf.ini'
+
+  # 2) Emite o certificado (produção)
+  certbot-once:
+    image: certbot/dns-cloudflare:v4.1.1
+    restart: "no"
+    depends_on:
+      - init-cf-ini
+    environment:
+      CERTBOT_EMAIL: ${CERTBOT_EMAIL:-lmbalcao@gmail.com}
+      CERTBOT_SERVER: ${CERTBOT_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      DNS_PROPAGATION_SECONDS: ${DNS_PROPAGATION_SECONDS:-120}
+    command:
+      - certonly
+      - --non-interactive
+      - --agree-tos
+      - --email
+      - ${CERTBOT_EMAIL:-lmbalcao@gmail.com}
+      - -d
+      - lbtec.org
+      - -d
+      - '*.lbtec.org'
+      - --dns-cloudflare
+      - --dns-cloudflare-credentials
+      - /etc/letsencrypt/cf.ini
+      - --dns-cloudflare-propagation-seconds
+      - ${DNS_PROPAGATION_SECONDS:-120}
+      - --server
+      - ${CERTBOT_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --config-dir
+      - /etc/letsencrypt
+      - --work-dir
+      - /etc/letsencrypt/work
+      - --logs-dir
+      - /etc/letsencrypt/logs
+    volumes:
+      - /data/coolify/proxy/certs:/etc/letsencrypt

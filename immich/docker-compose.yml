@@ -1,0 +1,118 @@
+#Pré-Compose:
+#
+#No host, como root:
+#
+#echo "dockremap:100000:65536" >> /etc/subuid
+#echo "dockremap:100000:65536" >> /etc/subgid
+#
+#Edita o daemon do Docker:
+#
+#nano /etc/docker/daemon.json
+#
+#Conteúdo exato:
+#
+#{
+#  "userns-remap": "default"
+#}
+#
+#systemctl restart docker
+#
+# Caso tenha Portainer, tem que ser instalado com --userns=host
+#
+    # docker run -d \
+    #  --name portainer_agent \
+    #  --restart=always \
+    #  --userns=host \
+    #  -p 9001:9001 \
+    #  -v /var/run/docker.sock:/var/run/docker.sock \
+    #  -v /var/lib/docker/volumes:/var/lib/docker/volumes \
+    #  -v /:/host \
+    #  portainer/agent:2.33.3
+
+name: immich
+
+services:
+  # init-db:
+  #   image: alpine:3.21
+  #   container_name: init-db
+  #   restart: "no"
+  #   privileged: true
+  #   userns_mode: "host"
+  #   volumes:
+  #     - /opt:/opt
+  #   entrypoint:
+  #     - /bin/sh
+  #     - -lc
+  #     - |
+  #       set -eu
+
+  #       echo "[init-db] Criar diretório /opt/db..."
+  #       mkdir -p /opt/db
+
+  #       echo "[init-db] Ajustar ownership para userns (100000:100000)..."
+  #       chown -R 100000:100000 /opt/db
+
+  #       echo "[init-db] OK"
+
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:release
+    volumes:
+      - /mnt/data:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:  
+      TZ: Europe/Lisbon
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USERNAME: immich
+      DB_PASSWORD: Password123
+      DB_DATABASE_NAME: immich
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MACHINE_LEARNING_URL: http://immich-machine-learning:3003  
+    ports:
+      - '2283:2283'
+    depends_on:
+      - redis
+      - database
+    restart: always
+    healthcheck:
+      disable: false
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+
+    image: ghcr.io/immich-app/immich-machine-learning:release
+
+    volumes:
+      - model-cache:/cache
+    restart: always
+    healthcheck:
+      disable: false
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:9@sha256:fb8d272e529ea567b9bf1302245796f21a2672b8368ca3fcb938ac334e613c8f
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:bcf63357191b76a916ae5eb93464d65c07511da41e3bf7a8416db519b40b1c23
+    ports:
+     - 5432:5432
+    environment:
+      POSTGRES_PASSWORD: Password123
+      POSTGRES_USER: immich
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+      # Uncomment the DB_STORAGE_TYPE: 'HDD' var if your database isn't stored on SSDs
+      # DB_STORAGE_TYPE: 'HDD'
+    volumes:
+      - /opt/db:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+
+volumes:
+  model-cache:

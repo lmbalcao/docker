@@ -1,0 +1,172 @@
+- defaultTab: nodes
+  description: Não executar individualmente
+  executionEnabled: true
+  id: e7c952d0-8f91-4be5-8aff-d4ebee4526a0
+  loglevel: INFO
+  name: Atualiza lxc.conf auxiliar
+  nodeFilterEditable: false
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: false
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: gera lxc.conf.tmp
+      passSecureInput: 'false'
+      script: |-
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        CONF="/home/rundeck/configs/proxmox.conf"
+        DST="/home/rundeck/configs/lxc.conf.tmp"
+        SRC="/tmp/lxc.conf"
+
+        SSH_USER_DEFAULT="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS="-p ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new"
+
+        mkdir -p "$(dirname "$DST")"
+        : > "$DST"
+
+        if [ ! -f "$CONF" ]; then
+          echo "ERRO: ficheiro não existe: $CONF"
+          exit 1
+        fi
+
+        # Extrai "section" (ex: 2core) e "hostname" (IP) do YAML simples
+        # output: "<nodename> <ip>"
+        awk '
+          /^[^[:space:]][^:]*:[[:space:]]*$/ {
+            sec=$1; sub(/:$/, "", sec); next
+          }
+          /^[[:space:]]*hostname:[[:space:]]*/ {
+            ip=$2
+            gsub(/["'\'' ]/, "", ip)
+            if (sec != "" && ip != "") print sec, ip
+          }
+        ' "$CONF" | while read -r NODE IP; do
+          [ -n "${NODE:-}" ] && [ -n "${IP:-}" ] || continue
+
+          OUT="$(ssh ${SSH_OPTS} "${SSH_USER_DEFAULT}@${IP}" sh -s -- "${NODE}" "${SRC}" <<'REMOTE'
+        set -eu
+        NODE="$1"
+        SRC="$2"
+
+        echo "### BEGIN NODE ${NODE}"
+        if [ -f "$SRC" ]; then
+          cat "$SRC"
+        else
+          echo "lxc_conf_present=false"
+        fi
+        echo "### END NODE ${NODE}"
+        echo
+        REMOTE
+        )" || OUT=$(
+            printf '### BEGIN NODE %s\nssh_error=true\n### END NODE %s\n\n' "$NODE" "$NODE"
+          )
+
+          printf '%s' "$OUT" >> "$DST"
+        done
+    - autoSecureInput: 'false'
+      description: Corrige lxc.conf.tmp
+      passSecureInput: 'false'
+      script: |-
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        INPUT="/home/rundeck/configs/lxc.conf.tmp"
+
+        awk '
+        /^[^[:space:]].*:$/ {
+          key=$0
+          sub(/:$/, "", key)
+          current_key=key
+          block[current_key]=$0 ORS
+          order[++n]=current_key
+          next
+        }
+
+        /^[[:space:]]*hostname:[[:space:]]*/ {
+          # extrai o primeiro texto entre aspas: "paperless"
+          if (match($0, /"[^"]+"/)) {
+            v = substr($0, RSTART+1, RLENGTH-2)
+            hostname[current_key]=v
+          }
+        }
+
+        {
+          # só anexa linhas se já estivermos dentro de um bloco
+          if (current_key != "") {
+            block[current_key]=block[current_key] $0 ORS
+          } else {
+            pre = pre $0 ORS
+          }
+        }
+
+        END {
+          # imprime quaisquer linhas antes do 1º bloco (se existirem)
+          if (pre != "") printf "%s", pre
+
+          for (i=1; i<=n; i++) {
+            k=order[i]
+            if (hostname[k] != "") {
+              gsub(k ":", hostname[k] ":", block[k])
+            }
+            printf "%s", block[k]
+          }
+        }
+        ' "$INPUT"
+    - autoSecureInput: 'false'
+      description: Substitui versão de lxc.conf
+      passSecureInput: 'false'
+      script: |-
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        DIR="/home/rundeck/configs"
+        TMP="$DIR/lxc.conf.tmp"
+        OUT="$DIR/lxc.conf"
+        NEW="$DIR/.lxc.conf.new"
+
+        [ -f "$TMP" ] || { echo "ERRO: não existe $TMP" >&2; exit 1; }
+
+        awk '
+        /^[^[:space:]].*:$/ {
+          key=$0
+          sub(/:$/, "", key)
+          current_key=key
+          block[current_key]=$0 ORS
+          order[++n]=current_key
+          next
+        }
+
+        /^[[:space:]]*hostname:[[:space:]]*/ {
+          if (match($0, /"[^"]+"/)) {
+            v = substr($0, RSTART+1, RLENGTH-2)
+            hostname[current_key]=v
+          }
+        }
+
+        {
+          if (current_key != "") block[current_key]=block[current_key] $0 ORS
+          else pre = pre $0 ORS
+        }
+
+        END {
+          if (pre != "") printf "%s", pre
+          for (i=1; i<=n; i++) {
+            k=order[i]
+            if (hostname[k] != "") gsub(k ":", hostname[k] ":", block[k])
+            printf "%s", block[k]
+          }
+        }
+        ' "$TMP" > "$NEW"
+
+        # substituição atómica
+        mv -f "$NEW" "$OUT"
+
+        echo "OK: $OUT atualizado a partir de $TMP"
+    keepgoing: false
+    strategy: node-first
+  uuid: e7c952d0-8f91-4be5-8aff-d4ebee4526a0
+

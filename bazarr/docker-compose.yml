@@ -1,0 +1,17 @@
+version: "3.8"
+
+services:
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    ports:
+      - "6767:6767"
+    environment:
+      PUID: 1001
+      PGID: 1001
+      TZ: Europe/Lisbon
+    volumes:
+      - /opt/bazarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+    restart: unless-stopped

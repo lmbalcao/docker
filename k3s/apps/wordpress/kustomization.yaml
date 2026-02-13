@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: wordpress
+resources:
+  - namespace.yaml
+  - pv-wpcontent.yaml
+  - pvc-wpcontent.yaml
+  - service-mariadb.yaml
+  - mariadb-statefulset.yaml
+  - service-wordpress.yaml
+  - wordpress-deployment.yaml
+  - ingress.yaml

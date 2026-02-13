@@ -1,0 +1,260 @@
+version: "3.8"
+
+services:
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - /mnt/data:/mnt/data
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+
+        echo "### Instalação de dependências base ###"
+        apk add --no-cache ca-certificates curl bash git sudo iproute2
+        echo "# OK #"
+
+        echo "### Definir permissões GLOBAIS UID:GID 1001:1001 ###"
+        chown -R 1001:1001 /mnt/data || true
+        echo "# OK #"
+
+        echo "### Criar estrutura PARTICULAR ###"
+        mkdir -p \
+          /opt/bazarr \
+          /opt/sonarr \
+          /opt/radarr \
+          /opt/lidarr \
+          /opt/prowlarr \
+          /opt/jellyfin \
+          /opt/tdarr \
+          /opt/rdtclient \
+          /opt/ombi \
+          /mnt/data/media \
+          /mnt/data/downloads
+        echo "# OK #"
+
+        echo "### Definir permissões PARTICULARES UID:GID 1001:1001 ###"
+        chown -R 1001:1001 /opt/bazarr /opt/sonarr /opt/radarr /opt/lidarr /opt/prowlarr /opt/jellyfin /opt/tdarr /opt/rdtclient /opt/ombi /mnt/data || true
+        echo "# OK #"
+
+  # === VPN (global) ===
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      - TZ=Europe/Lisbon
+      # >>>> Preenche estas variáveis via Coolify Secrets ou ficheiro .env (NÃO colocar no Git) <<<<
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER}
+      - OPENVPN_USER=${OPENVPN_USER}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+      - WIREGUARD_PRIVATE_KEY=${WIREGUARD_PRIVATE_KEY}
+      - WIREGUARD_ADDRESSES=${WIREGUARD_ADDRESSES}
+      - SERVER_COUNTRIES=${SERVER_COUNTRIES}
+    ports:
+      - "6767:6767"  # Bazarr
+      - "8989:8989"  # Sonarr
+      - "7878:7878"  # Radarr
+      - "8686:8686"  # Lidarr
+      - "9696:9696"  # Prowlarr
+      - "8096:8096"  # Jellyfin
+      - "8265:8265"  # Tdarr WebUI
+      - "8266:8266"  # Tdarr Server
+      - "6500:6500"  # RdtClient
+      - "3579:3579"  # Ombi
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ip a show tun0 >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # === Apps (partilham namespace de rede do Gluetun) ===
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/bazarr:/config
+      - /mnt/data/media:/media
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/sonarr:/config
+      - /mnt/data/media:/media
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/radarr:/config
+      - /mnt/data/media:/media
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/lidarr:/config
+      - /mnt/data/media:/media
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/prowlarr:/config
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/jellyfin:/config
+      - /mnt/data/media:/media
+#      - /dev/dri:/dev/dri  # descomentar se pretenderes hardware transcoding
+    restart: unless-stopped
+
+  tdarr:
+    image: ghcr.io/haveagitgat/tdarr:latest
+    container_name: tdarr
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+      - UMASK=002
+      - serverIP=0.0.0.0
+      - serverPort=8266
+      - webUIPort=8265
+    volumes:
+      - /opt/tdarr/server:/app/server
+      - /opt/tdarr/configs:/app/configs
+      - /opt/tdarr/logs:/app/logs
+      - /mnt/data/media:/media
+      - /mnt/data/downloads:/downloads
+#    devices:
+#      - /dev/dri:/dev/dri
+    restart: unless-stopped
+
+  rdtclient:
+    image: ghcr.io/rogerfar/rdtclient:latest
+    container_name: rdtclient
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/rdtclient:/data/db
+      - /mnt/data/downloads:/downloads
+    restart: unless-stopped
+
+  ombi:
+    image: lscr.io/linuxserver/ombi:latest
+    container_name: ombi
+    network_mode: "service:gluetun"
+    depends_on:
+      - gluetun
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/ombi:/config
+      - /mnt/data/media:/media
+    restart: unless-stopped
+
+  mediamanager:
+    image: ghcr.io/maxdorninger/mediamanager/mediamanager:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - CONFIG_DIR=/app/config
+    volumes:
+      - /mnt/data/:/data/
+      - /opt/mediamanager/config/:/app/config/
+      - /opt/mediamanager/images/:/data/images/
+    depends_on:
+      - db
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -d $${POSTGRES_DB} -U $${POSTGRES_USER}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    environment:
+      POSTGRES_USER: MediaManager
+      POSTGRES_DB: MediaManager
+      POSTGRES_PASSWORD: MediaManager
+
+volumes:
+  postgres_data:
+    driver: local
+

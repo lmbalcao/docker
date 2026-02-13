@@ -1,0 +1,202 @@
+- defaultTab: nodes
+  description: "Avalia sistema e aplica updates \n\nnao executa nele proprio"
+  excludeFilterUncheck: true
+  executionEnabled: true
+  id: ddb6cb3a-d903-4866-a873-3bb032c6f7b8
+  loglevel: INFO
+  maxMultipleExecutions: '2'
+  multipleExecutions: true
+  name: Updates de sistema
+  nodeFilterEditable: false
+  nodefilters:
+    dispatch:
+      excludePrecedence: true
+      keepgoing: true
+      rankOrder: ascending
+      successOnEmptyNodeFilter: true
+      threadcount: '1'
+    filter: '!name: rundeck'
+    filterExclude: rundeck honeypot
+  nodesSelectedByDefault: true
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: Executa de acordo com valores de /tmp/base.tmp
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        has(){ command -v "$1" >/dev/null 2>&1; }
+        out(){ printf "[%s] %s\n" "$1" "$2"; }
+
+        # Este script corre DENTRO do node.
+        # Espera que /tmp/base.tmp já exista no node (criado pelo teu os-detect).
+        # Uso: ./upgrade.sh
+
+        STATE_FILE="/tmp/base.tmp"
+
+        # --- validação local (no próprio node) ---
+        if [ ! -f "$STATE_FILE" ]; then
+          out "ERROR" "ficheiro $STATE_FILE não existe"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+
+        : "${ip:?ERRO: ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: docker não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) out "ERROR" "docker inválido: $docker"; exit 1;; esac
+
+        # hostname real do node (já que estamos dentro dele)
+        HOSTNAME_REAL="$(hostname 2>/dev/null || echo unknown)"
+
+        out "STATE" "host=$HOSTNAME_REAL ip=$ip type=$type docker=$docker"
+        out "WHOAMI" "$(whoami)"
+
+        # =========================================================
+        # Upgrades por plataforma
+        # =========================================================
+        run_openwrt() {
+          if ! has opkg; then
+            out "ERROR" "OpenWrt: opkg não encontrado"
+            exit 1
+          fi
+
+          out "UPGRADE" "OpenWrt: opkg update"
+          opkg update
+
+          out "UPGRADE" "OpenWrt: opkg upgrade apenas dos upgradable"
+          opkg list-upgradable | cut -f 1 -d ' ' | xargs -r opkg upgrade
+
+          out "UPGRADE" "OpenWrt: concluído"
+        }
+
+        run_proxmox() {
+          if ! has sudo; then
+            out "ERROR" "Proxmox: sudo não existe"
+            exit 1
+          fi
+
+          if ! has apt-get; then
+            out "ERROR" "Proxmox: apt-get não encontrado"
+            exit 1
+          fi
+
+          out "UPGRADE" "Proxmox: apt update (non-interactive)"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+          out "UPGRADE" "Proxmox: apt full-upgrade (non-interactive)"
+          sudo DEBIAN_FRONTEND=noninteractive apt-get \
+            -o Dpkg::Options::="--force-confdef" \
+            -o Dpkg::Options::="--force-confold" \
+            full-upgrade -y
+
+          out "UPGRADE" "Proxmox: concluído"
+        }
+
+        run_linux_apt() {
+          if ! has apt-get && ! has apt; then
+            out "ERROR" "Linux: apt/apt-get não encontrado"
+            exit 1
+          fi
+
+          APT="apt-get"
+          if has apt-get; then APT="apt-get"; elif has apt; then APT="apt"; fi
+
+          out "UPGRADE" "Linux: apt update && apt upgrade -y && apt full-upgrade -y && apt autoremove -y && apt autoclean -y"
+          export DEBIAN_FRONTEND=noninteractive
+
+          $APT update
+          $APT upgrade -y
+          $APT full-upgrade -y
+          $APT autoremove -y
+          $APT autoclean -y
+
+          out "UPGRADE" "Linux: concluído"
+        }
+
+        # =========================================================
+        # Docker: procurar imagens novas (pull das imagens em uso)
+        # =========================================================
+        docker_refresh_images() {
+          if ! has docker; then
+            out "DOCKER" "docker comando não existe"
+            return 0
+          fi
+
+          # aceita /var/run ou /run
+          if [ ! -S /var/run/docker.sock ] && [ ! -S /run/docker.sock ]; then
+            out "DOCKER" "socket docker não existe (/var/run/docker.sock ou /run/docker.sock)"
+            return 0
+          fi
+
+          if ! docker info >/dev/null 2>&1; then
+            out "DOCKER" "daemon não acessível (docker info falhou)"
+            return 0
+          fi
+
+          out "DOCKER" "A recolher lista de imagens em uso (docker ps)..."
+          IMAGES="$(docker ps --format '{{.Image}}' 2>/dev/null | sort -u || true)"
+
+          if [ -z "${IMAGES:-}" ]; then
+            out "DOCKER" "Sem containers a correr (nada para puxar)"
+            return 0
+          fi
+
+          out "DOCKER" "A puxar (pull) imagens em uso..."
+          echo "$IMAGES" | while IFS= read -r img; do
+            [ -n "$img" ] || continue
+            out "DOCKER_PULL" "$img"
+            if docker pull "$img" >/dev/null 2>&1; then
+              out "DOCKER_PULL_OK" "$img"
+            else
+              out "DOCKER_PULL_FAIL" "$img"
+            fi
+          done
+
+          out "DOCKER" "Concluído"
+        }
+
+        # =========================================================
+        # Execução por TYPE
+        # =========================================================
+        case "$type" in
+          openwrt)
+            out "TYPE" "OpenWrt"
+            run_openwrt
+            ;;
+          proxmox)
+            out "TYPE" "Proxmox"
+            run_proxmox
+            ;;
+          lxc_sem_privilegios|lxc_priveligiado|vm|maquina_linux)
+            out "TYPE" "$type"
+            run_linux_apt
+            ;;
+          *)
+            out "TYPE" "Desconhecido: $type (não faço upgrade)"
+            ;;
+        esac
+
+        # =========================================================
+        # Docker (se marcado como true no STATE)
+        # =========================================================
+        if [ "$docker" = "true" ]; then
+          docker_refresh_images
+        else
+          out "DOCKER" "Desactivado (docker=false no STATE)"
+        fi
+
+        exit 0
+    keepgoing: false
+    strategy: node-first
+  timeZone: Europe/Lisbon
+  uuid: ddb6cb3a-d903-4866-a873-3bb032c6f7b8
+

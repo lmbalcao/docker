@@ -1,0 +1,221 @@
+- defaultTab: nodes
+  description: |-
+    Garante toda a estrutura de funcionamento do sistema.
+
+    Percorre todos os hosts de todos os livros e:
+
+    1. /tmp/base.tmp
+        Procura pela existencia do ficheiro, caso não exista cria e popula com a informação necessária.
+    2. Adiciona chaves SSH
+  excludeFilterUncheck: true
+  executionEnabled: true
+  id: 49059950-606c-4e26-a030-e94fc5fc2ed0
+  loglevel: INFO
+  name: Garante estrutura v2
+  nodeFilterEditable: false
+  nodefilters:
+    dispatch:
+      excludePrecedence: true
+      keepgoing: false
+      rankOrder: ascending
+      successOnEmptyNodeFilter: true
+      threadcount: '1'
+    filter: .*
+    filterExclude: honeypot
+  nodesSelectedByDefault: true
+  options:
+  - enforced: true
+    label: Force rebuild /tmp/base.tmp
+    name: FORCE_REBUILD
+    required: true
+    value: '0'
+    values:
+    - '0'
+    - '1'
+    valuesListDelimiter: ','
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: 'Deteta existencia de base.tmp, cria se não existir'
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        # Cria /tmp/base.tmp se não existir; se existir, imprime.
+        # Robusto para OpenWrt (busybox) e Linux “normal”.
+        # Não falha o node (exit 0 sempre).
+
+        set -u
+
+        has(){ command -v "$1" >/dev/null 2>&1; }
+
+        STATE_FILE="/tmp/base.tmp"
+
+        # ---------
+        # helpers
+        # ---------
+        get_hostname() {
+          # evitar depender de "hostname" (pode não existir em OpenWrt minimal)
+          if has hostname; then
+            hostname 2>/dev/null || true
+          fi
+          cat /proc/sys/kernel/hostname 2>/dev/null || echo unknown
+        }
+
+        get_first_ip() {
+          # tenta iproute2 primeiro
+          if has ip; then
+            ip -4 route get 1.1.1.1 2>/dev/null \
+              | awk '{for(i=1;i<=NF;i++) if($i=="src"){print $(i+1); exit}}' \
+              && return 0
+            ip -4 addr show scope global 2>/dev/null \
+              | awk '/inet /{print $2}' | cut -d/ -f1 | head -n1 \
+              && return 0
+          fi
+
+          # fallback: hostname -I (se existir)
+          if has hostname; then
+            hostname -I 2>/dev/null | awk '{print $1}' && return 0
+          fi
+
+          echo unknown
+        }
+
+        print_file_numbered() {
+          # nl pode não existir; usa cat -n se existir; senão imprime cru
+          if has nl; then
+            nl -ba "$1" 2>/dev/null || cat "$1"
+          elif has cat; then
+            # busybox cat normalmente suporta -n, mas nem sempre; tenta e faz fallback
+            (cat -n "$1" 2>/dev/null) || cat "$1"
+          else
+            # improvável, mas seguro
+            sed -n 'p' "$1" 2>/dev/null || true
+          fi
+        }
+
+        # Node info (para logs)
+        node="${RD_NODE_NAME:-$(get_hostname)}"
+        host="${RD_NODE_HOSTNAME:-unknown}"
+
+        # Rundeck option: FORCE_REBUILD (0/1)
+        FORCE_REBUILD="${RD_OPTION_FORCE_REBUILD:-0}"
+        case "$FORCE_REBUILD" in
+          1|true|TRUE|yes|YES|y|Y) FORCE_REBUILD=1 ;;
+          *) FORCE_REBUILD=0 ;;
+        esac
+        # Se já existir e não houver force: imprime e sai
+        if [ -f "$STATE_FILE" ] && [ "$FORCE_REBUILD" != "1" ]; then
+          echo "OK node=${node} host=${host} file=${STATE_FILE}"
+          sed -e 's/\r$//' "$STATE_FILE" 2>/dev/null || cat "$STATE_FILE"
+          exit 0
+        fi
+
+        # Se existir e houver force: apaga para recriar
+        if [ -f "$STATE_FILE" ] && [ "$FORCE_REBUILD" = "1" ]; then
+          rm -f "$STATE_FILE" 2>/dev/null || true
+        fi
+
+        # ---------
+        # construir base.tmp
+        # ---------
+        ct_hostname="$(get_hostname)"
+        host_ip="$(get_first_ip)"
+        [ -n "${host_ip:-}" ] || host_ip="unknown"
+
+        # type (mínimo suficiente)
+        rtype="maquina_linux"
+
+        # OpenWrt
+        if [ -f /etc/openwrt_release ] || [ -f /etc/openwrt_version ] || grep -qi openwrt /etc/os-release 2>/dev/null; then
+          rtype="openwrt"
+        fi
+
+        # Proxmox host (só se ainda for linux genérico)
+        if [ "$rtype" = "maquina_linux" ]; then
+          if has pveversion || [ -d /etc/pve ]; then
+            rtype="proxmox"
+          fi
+        fi
+
+        # LXC detect (funciona em OpenWrt e Linux)
+        in_lxc="0"
+        if [ -f /proc/1/environ ]; then
+          tr '\0' '\n' </proc/1/environ 2>/dev/null | grep -q '^container=lxc' && in_lxc="1" || true
+        fi
+        if [ "$in_lxc" = "0" ] && [ -f /proc/1/cgroup ]; then
+          grep -qE 'lxc|/lxc/' /proc/1/cgroup 2>/dev/null && in_lxc="1" || true
+        fi
+
+        if [ "$in_lxc" = "1" ]; then
+          lxc_unpriv="0"
+          if [ -f /proc/self/uid_map ]; then
+            host_start="$(awk 'NR==1{print $2}' /proc/self/uid_map 2>/dev/null || echo 0)"
+            [ "${host_start:-0}" = "100000" ] && lxc_unpriv="1"
+          fi
+          if [ "$lxc_unpriv" = "1" ]; then
+            rtype="lxc_sem_privilegios"
+          else
+            rtype="lxc_priveligiado"
+          fi
+        fi
+
+        # VM detect (apenas se ainda genérico e se systemd-detect-virt existir)
+        if [ "$rtype" = "maquina_linux" ] && has systemd-detect-virt; then
+          v="$(systemd-detect-virt 2>/dev/null || true)"
+          if [ -n "$v" ] && [ "$v" != "none" ]; then
+            case "$v" in
+              lxc|systemd-nspawn|docker|podman|container) : ;;
+              *) rtype="vm" ;;
+            esac
+          fi
+        fi
+
+        # docker true/false (não chamar "docker info" se não existir)
+        docker="false"
+        if has docker; then
+          docker info >/dev/null 2>&1 && docker="true" || true
+        else
+          ( [ -S /var/run/docker.sock ] || [ -S /run/docker.sock ] ) && docker="true" || true
+        fi
+
+        # portainer true/false (só se docker cli existir e docker=true)
+        portainer="false"
+        if [ "$docker" = "true" ] && has docker; then
+          docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null \
+            | grep -qiE '(^|[[:space:]])portainer[_-]?agent([[:space:]]|$)|portainer/agent' \
+            && portainer="true" || true
+        fi
+
+        # escrever ficheiro
+        cat > "$STATE_FILE" <<EOF
+        ip=${host_ip}
+        ct_hostname=${ct_hostname}
+        type=${rtype}
+        docker=${docker}
+        portainer=${portainer}
+        EOF
+
+        echo "CREATED node=${node} host=${host} file=${STATE_FILE}"
+        echo "[HOST] ct_hostname=${ct_hostname} ip=${host_ip} type=${rtype} docker=${docker} portainer=${portainer}"
+        echo "--- $STATE_FILE ---"
+        print_file_numbered "$STATE_FILE"
+
+        exit 0
+    - autoSecureInput: 'false'
+      description: Adiciona chave SSH VSCode
+      passSecureInput: 'false'
+      script: |
+        umask 077 && \
+        mkdir -p /root/.ssh && \
+        chmod 700 /root/.ssh && \
+        cat <<'EOF' >> /root/.ssh/authorized_keys
+        ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG4xPGgehPGBTd4k/KVWju1arRvzyr3E6H8Sp8wjWEbI vscode-homelab
+        EOF
+        chmod 600 /root/.ssh/authorized_keys
+    keepgoing: false
+    strategy: node-first
+  uuid: 49059950-606c-4e26-a030-e94fc5fc2ed0
+

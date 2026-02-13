@@ -1,0 +1,187 @@
+version: "3.8"
+
+services:
+  # One-shot init: cria diretórios no HOST e aplica permissões
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - /opt:/opt
+      - /mnt:/mnt
+    environment:
+      VAULT_ROLE_ID: ${VAULT_ROLE_ID}
+      VAULT_SECRET_ID: ${VAULT_SECRET_ID}
+      VAULT_ADDRESS: https://hashycorp.lbtec.org:8200
+      VAULT_CACERT: ""
+      VAULT_TLS_SKIP_VERIFY: "true"
+      VAULT_ENDPOINT: /v1/secret/data/apps/coolify/prod/paperless
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        apk add --no-cache curl jq
+        mkdir -p \
+          /opt/redisdata \
+          /opt/pgdata \
+          /opt/paperless \
+          /mnt/nas1-paperless/media \
+          /mnt/nas1-paperless/export \
+          /mnt/nas1-paperless/consume \
+          /opt/scripts \
+          /opt/secrets
+
+        chown -R 999:1000 /opt/pgdata || true
+        find /opt/pgdata -type d -exec chmod 700 {} \; || true
+        find /opt/pgdata -type f -exec chmod 600 {} \; || true
+
+        chown -R 999:1000 /opt/redisdata || true
+        find /opt/redisdata -type d -exec chmod 755 {} \; || true
+        find /opt/redisdata -type f -exec chmod 644 {} \; || true
+
+        chmod 755 /opt/paperless || true
+
+        chown -R 1000:1000 \
+          /mnt/nas1-paperless/media \
+          /mnt/nas1-paperless/export \
+          /mnt/nas1-paperless/consume || true
+
+        chown -R 1000:1000 /opt/scripts || true
+        chown root:root /opt/secrets || true
+        chmod 700 /opt/secrets  || true
+
+        touch /opt/secrets/paperless.env
+        chmod 600 /opt/secrets/paperless.env
+
+        TLS_OPTS="-k"
+        LOGIN_JSON="$(curl -sS $TLS_OPTS \
+          -H 'Content-Type: application/json' \
+          --data "{\"role_id\":\"${VAULT_ROLE_ID}\",\"secret_id\":\"${VAULT_SECRET_ID}\"}" \
+          "https://hashycorp.lbtec.org:8200/v1/auth/approle/login" || true)"
+
+        CLIENT_TOKEN="$(printf '%s' "$LOGIN_JSON" | jq -r '.auth.client_token // empty' 2>/dev/null || true)"
+        [ -z "$CLIENT_TOKEN" ] && echo "[ERRO] Login falhou" && exit 1
+
+        SECRET_JSON="$(curl -sS $TLS_OPTS \
+          -H "X-Vault-Token: $CLIENT_TOKEN" \
+          "https://hashycorp.lbtec.org:8200/v1/secret/data/apps/coolify/prod/paperless" || true)"
+
+        printf '%s\n' "$SECRET_JSON" \
+          | jq -r '.data.data | to_entries[] | "\(.key)=\(.value)"' \
+          > /opt/secrets/paperless.env
+
+        {
+          echo "TZ=Europe/Lisbon"
+          echo "PAPERLESS_TIME_ZONE=Europe/Lisbon"
+          echo "PAPERLESS_ALLOWED_HOSTS=paper.lbtec.org,localhost,127.0.0.1"
+          echo "PAPERLESS_CSRF_TRUSTED_ORIGINS=https://paper.lbtec.org"
+          echo "PAPERLESS_URL=https://paper.lbtec.org"
+          echo "PAPERLESS_SECURE_PROXY_SSL_HEADER=HTTP_X_FORWARDED_PROTO,https"
+          echo "PAPERLESS_DBHOST=db"
+          echo "PAPERLESS_DBPORT=5432"
+          echo "PAPERLESS_REDIS=redis://broker:6379"
+          echo "POSTGRES_DB=paperless"
+          echo "POSTGRES_USER=paperless"
+        } >> /opt/secrets/paperless.env
+
+        chmod 600 /opt/secrets/paperless.env
+        chown root:root /opt/secrets /opt/secrets/paperless.env
+        echo "[init-host] concluído."
+
+  broker:
+    image: docker.io/library/redis:8
+    restart: unless-stopped
+    volumes:
+      - /opt/redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    env_file: /opt/secrets/paperless.env
+    environment:
+      TZ: Europe/Lisbon
+      POSTGRES_PASSWORD: __FROM_VAULT__
+      POSTGRES_DB: paperless
+      POSTGRES_USER: paperless
+    volumes:
+      - /opt/pgdata:/var/lib/postgresql/data
+      - /opt/secrets/paperless.env:/opt/secrets/paperless.env:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    depends_on:
+      init-host:
+        condition: service_completed_successfully
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      - db
+      - broker
+    ports:
+      - "8000:8000"
+    env_file: /opt/secrets/paperless.env
+    environment:
+      USERMAP_UID: "1000"
+      USERMAP_GID: "1000"
+      TZ: "Europe/Lisbon"
+
+      PAPERLESS_REDIS: "redis://broker:6379"
+      PAPERLESS_DBHOST: "db"
+      PAPERLESS_DBPORT: "5432"
+      PAPERLESS_DBNAME: "paperless"
+      PAPERLESS_DBUSER: "paperless"
+      PAPERLESS_DBPASS: "__FROM_VAULT__"
+
+      PAPERLESS_TIME_ZONE: "Europe/Lisbon"
+      PAPERLESS_ALLOWED_HOSTS: "paper.lbtec.org,localhost,127.0.0.1"
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: "https://paper.lbtec.org"
+      PAPERLESS_URL: "https://paper.lbtec.org"
+      PAPERLESS_SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+
+      PAPERLESS_ENABLE_ALLAUTH: "true"
+      PAPERLESS_APPS: "allauth.socialaccount.providers.openid_connect"
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: >-
+        {
+          "openid_connect": {
+            "APPS": [
+              {
+                "provider_id": "authentik",
+                "name": "authentik",
+                "client_id": "__FROM_VAULT__",
+                "secret": "__FROM_VAULT__",
+                "settings": {
+                  "server_url": "https://auth.lbtec.org/application/o/paperless/.well-known/openid-configuration",
+                  "claims": {"username": "email"}
+                }
+              }
+            ],
+            "OAUTH_PKCE_ENABLED": "True"
+          }
+        }
+
+      OIDC_PROVIDER_ID: "authentik"
+      OIDC_NAME: "authentik"
+      OIDC_CLIENT_ID: "__FROM_VAULT__"
+      OIDC_CLIENT_SECRET: "__FROM_VAULT__"
+      OIDC_SERVER_URL: "https://auth.lbtec.org/application/o/paperless/.well-known/openid-configuration"
+      OIDC_USERNAME_CLAIM: "email"
+
+      PAPERLESS_AUTO_LOGIN: "true"
+      PAPERLESS_AUTO_CREATE: "true"
+      PAPERLESS_LOGOUT_REDIRECT_URL: "https://auth.lbtec.org/application/o/paperless/end-session/"
+    volumes:
+      - /opt/secrets/paperless.env:/opt/secrets/paperless.env:ro
+      - /opt/scripts:/scripts:ro
+      - /opt/paperless:/usr/src/paperless/data
+      - /mnt/nas1-paperless/media:/usr/src/paperless/media
+      - /mnt/nas1-paperless/export:/usr/src/paperless/export
+      - /mnt/nas1-paperless/consume:/usr/src/paperless/consume

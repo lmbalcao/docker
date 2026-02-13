@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: immich-machine-learning
+spec:
+  selector: { app: immich-ml }
+  ports:
+    - name: http
+      port: 3003
+      targetPort: 3003
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-machine-learning
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: immich-ml } }
+  template:
+    metadata: { labels: { app: immich-ml } }
+    spec:
+      containers:
+        - name: ml
+          image: ghcr.io/immich-app/immich-machine-learning:release
+          env:
+            - name: TZ
+              value: Europe/Lisbon
+          ports:
+            - containerPort: 3003

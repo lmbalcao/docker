@@ -1,0 +1,46 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stirlingpdf
+  labels: { app.kubernetes.io/name: stirlingpdf }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: stirlingpdf }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: stirlingpdf }
+    spec:
+      containers:
+        - name: stirlingpdf
+          image: frooodle/s-pdf:latest
+          imagePullPolicy: Always
+          env:
+            - name: DOCKER_ENABLE_SECURITY
+              value: "false"
+            - name: SYSTEM_DEFAULTLOCALE
+              value: "pt_PT"
+          ports:
+            - containerPort: 8080
+              name: http
+          volumeMounts:
+            - name: configs
+              mountPath: /configs
+            - name: training
+              mountPath: /trainingData
+          readinessProbe:
+            httpGet: { path: "/", port: http }
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: "/", port: http }
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: "2", memory: 2Gi }
+      volumes:
+        - name: configs
+          emptyDir: {}
+        - name: training
+          emptyDir: {}

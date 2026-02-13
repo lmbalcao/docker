@@ -1,0 +1,872 @@
+- defaultTab: nodes
+  description: |
+    Diagnóstico e limpeza remota de disco (via SSH)
+    Tive que adicionar as chaves ssh dentro do compose do rundeck, ao user rundeck
+  executionEnabled: true
+  id: b7311655-61c5-4ad7-a0e5-c2a51916eedf
+  loglevel: INFO
+  maxMultipleExecutions: '2'
+  multipleExecutions: true
+  name: '[Alertmanager] Verificação e recuperação de espaço em disco'
+  nodeFilterEditable: false
+  options:
+  - description: IP do host alvo (vem do alerta Prometheus via Alertmanager)
+    label: Target Host IP
+    name: hostname
+    regex: '^([0-9]{1,3}\.){3}[0-9]{1,3}$'
+    required: true
+  - description: Mountpoint a verificar (opcional). Se vazio usa "/".
+    label: Mountpoint
+    name: mount
+    value: /
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: false
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: 'Regista histórico '
+      passSecureInput: 'false'
+      script: |-
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Preferir nome do job; se não existir, cair para o ID; se não existir, "unknown"
+        JOB_SAFE="${RD_JOB_NAME:-${RD_JOB_ID:-unknown}}"
+
+        # Sanitizar para nome de ficheiro (evita espaços e caracteres problemáticos)
+        JOB_SAFE="$(printf '%s' "$JOB_SAFE" | tr ' /:' '___' | tr -cd 'A-Za-z0-9._-')"
+        [ -n "$JOB_SAFE" ] || JOB_SAFE="unknown"
+
+        HIST="/tmp/history_${JOB_SAFE}"
+
+        # Registar data/hora (local do sistema onde o script corre)
+        date '+%F %T' >> "$HIST"
+    - autoSecureInput: 'false'
+      description: Decide se prossegue com o script (diferencial de 60 segundos)
+      passSecureInput: 'false'
+      script: |-
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Mesmo ficheiro do passo anterior
+        JOB_SAFE="${RD_JOB_NAME:-${RD_JOB_ID:-unknown}}"
+        JOB_SAFE="$(printf '%s' "$JOB_SAFE" | tr ' /:' '___' | tr -cd 'A-Za-z0-9._-')"
+        [ -n "$JOB_SAFE" ] || JOB_SAFE="unknown"
+
+        HIST="/tmp/history_${JOB_SAFE}"
+        MAX_GAP_SECONDS=60
+
+        # Se não existir histórico ou só houver 1 execução, prossegue
+        [ -f "$HIST" ] || exit 0
+
+        mapfile -t last2 < <(tail -n 2 "$HIST" | sed '/^[[:space:]]*$/d')
+        [ "${#last2[@]}" -lt 2 ] && exit 0
+
+        t1="${last2[0]}"
+        t2="${last2[1]}"
+
+        e1="$(date -d "$t1" +%s)"
+        e2="$(date -d "$t2" +%s)"
+
+        gap=$(( e2 - e1 ))
+        [ "$gap" -lt 0 ] && gap=$(( -gap ))
+
+        # Regra
+        if [ "$gap" -lt "$MAX_GAP_SECONDS" ]; then
+          echo "[INFO] última execução há ${gap}s (<60s) — script termina"
+          exit 0
+        fi
+
+        echo "[INFO] última execução há ${gap}s (>=60s) — script prossegue"
+        exit 0
+    - autoSecureInput: 'false'
+      description: Medição Inicial
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        STATE_FILE="/tmp/base.tmp"
+
+        # =========================
+        # No servidor Rundeck: lê opções do Job
+        # =========================
+        HOST="${RD_OPTION_HOSTNAME:?ERRO: RD_OPTION_HOSTNAME não definido}"
+        SSH_USER="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS="-p ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new"
+
+        # opcional: mount alvo (se não vier, o remoto usa "/")
+        MOUNT="${RD_OPTION_MOUNT:-}"
+
+        # =========================
+        # Liga por SSH ao host remoto e:
+        #  - lê /tmp/base.tmp no remoto
+        #  - valida vars
+        #  - executa análise
+        # =========================
+        ssh ${SSH_OPTS} "${SSH_USER}@${HOST}" sh -s -- "${STATE_FILE}" "${MOUNT}" <<'REMOTE'
+        set -eu
+
+        STATE_FILE="$1"
+        MOUNT_IN="$2"
+
+        # --- ler STATE no remoto ---
+        if [ ! -f "$STATE_FILE" ]; then
+          echo "ERRO: (remoto) ficheiro $STATE_FILE não existe"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+
+        : "${ip:?ERRO: (remoto) ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: (remoto) type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: (remoto) docker não definido em $STATE_FILE}"
+        : "${portainer:?ERRO: (remoto) portainer não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) echo "ERRO: (remoto) docker inválido: $docker"; exit 1;; esac
+        case "$portainer" in true|false) ;; *) echo "ERRO: (remoto) portainer inválido: $portainer"; exit 1;; esac
+
+        # mount: se não vier do Rundeck, default "/"
+        if [ -n "${MOUNT_IN:-}" ]; then
+          MOUNT="$MOUNT_IN"
+        else
+          MOUNT="/"
+        fi
+
+        TYPE="$type"
+        DOCKER="$docker"
+        PORTAINER="$portainer"
+
+        ts() { date -Is 2>/dev/null || date; }
+        has(){ command -v "$1" >/dev/null 2>&1; }
+        hdr(){ echo; echo "=== $* ==="; }
+        sub(){ echo "--- $* ---"; }
+
+        echo "[REMOTE] host=$(hostname 2>/dev/null || echo unknown) user=$(whoami 2>/dev/null || echo unknown)"
+        echo "[STATE] ip=$ip type=$TYPE docker=$DOCKER portainer=$PORTAINER"
+        echo "[REMOTE] mount=$MOUNT"
+        echo "=== [ANALISE ESPACO] $(ts) ==="
+
+        # =========================
+        # Base: df + inodes (sempre)
+        # =========================
+        hdr "FS: espaço e inodes"
+        sub "df (space)"
+        DF_LINE="$(df -kP "$MOUNT" 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        if [ -z "${DF_LINE:-}" ]; then
+          DF_LINE="$(df -kP 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        fi
+        echo "$DF_LINE" | awk '{printf "Filesystem=%s Size=%sK Used=%sK Avail=%sK UseP=%s Mount=%s\n",$1,$2,$3,$4,$5,$6}' 2>/dev/null || true
+        df -hP "$MOUNT" 2>/dev/null || df -hP 2>/dev/null || true
+
+        sub "df (inodes)"
+        DFI_LINE="$(df -iP "$MOUNT" 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        if [ -z "${DFI_LINE:-}" ]; then
+          DFI_LINE="$(df -iP 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        fi
+        echo "$DFI_LINE" | awk '{printf "Inodes=%s IUsed=%s IFree=%s IUseP=%s\n",$2,$3,$4,$5}' 2>/dev/null || true
+        df -iP "$MOUNT" 2>/dev/null || df -iP 2>/dev/null || true
+
+        # =========================
+        # helper: top dirs/files (rápido, limitado)
+        # =========================
+        dir_size_k() {
+          p="$1"
+          [ -d "$p" ] || { echo 0; return 0; }
+          if du -sk "$p" >/dev/null 2>&1; then
+            du -sk "$p" 2>/dev/null | awk '{print $1}' || echo 0
+          else
+            echo 0
+          fi
+        }
+
+        top_dirs() {
+          p="$1"
+          [ -d "$p" ] || return 0
+          sub "top dirs: $p"
+          if du -xhd1 "$p" >/dev/null 2>&1; then
+            du -xhd1 "$p" 2>/dev/null | sort -h | tail -n 15 || true
+          else
+            du -hd1 "$p" 2>/dev/null | sort -h | tail -n 15 || true
+          fi
+        }
+
+        top_files_varlog() {
+          [ -d /var/log ] || return 0
+          sub "top /var/log (files)"
+          if find /var/log -type f -printf '' >/dev/null 2>&1; then
+            find /var/log -type f -printf '%s\t%p\n' 2>/dev/null \
+              | sort -nr | head -n 10 \
+              | awk '{printf "%.1fMiB\t%s\n", $1/1024/1024, $2}'
+          else
+            du -a /var/log 2>/dev/null | sort -nr | head -n 10 || true
+          fi
+        }
+
+        journald_usage() {
+          if has journalctl; then
+            sub "journald disk-usage"
+            journalctl --disk-usage 2>/dev/null || true
+          fi
+        }
+
+        # =========================
+        # VARS FILE (no remoto)
+        # =========================
+        VARS_FILE="/tmp/space_start.vars"
+        : > "$VARS_FILE"
+        kv() { echo "$1=$2" >> "$VARS_FILE"; }
+
+        kv ts "$(ts)"
+        kv host "$(hostname 2>/dev/null || echo unknown)"
+        kv ip "$ip"
+        kv type "$TYPE"
+        kv mount "$MOUNT"
+        kv docker "$DOCKER"
+        kv portainer "$PORTAINER"
+
+        if [ -n "${DF_LINE:-}" ]; then
+          FS_K="$(echo "$DF_LINE" | awk '{print $2}' 2>/dev/null || echo 0)"
+          USED_K="$(echo "$DF_LINE" | awk '{print $3}' 2>/dev/null || echo 0)"
+          AVAIL_K="$(echo "$DF_LINE" | awk '{print $4}' 2>/dev/null || echo 0)"
+          USEP="$(echo "$DF_LINE" | awk '{gsub("%","",$5); print $5}' 2>/dev/null || echo 0)"
+          kv fs_size_k "$FS_K"
+          kv fs_used_k "$USED_K"
+          kv fs_avail_k "$AVAIL_K"
+          kv fs_use_pct "$USEP"
+        fi
+
+        if [ -n "${DFI_LINE:-}" ]; then
+          INODES="$(echo "$DFI_LINE" | awk '{print $2}' 2>/dev/null || echo 0)"
+          IUSED="$(echo "$DFI_LINE" | awk '{print $3}' 2>/dev/null || echo 0)"
+          IFREE="$(echo "$DFI_LINE" | awk '{print $4}' 2>/dev/null || echo 0)"
+          IUSEP="$(echo "$DFI_LINE" | awk '{gsub("%","",$5); print $5}' 2>/dev/null || echo 0)"
+          kv inodes_total "$INODES"
+          kv inodes_used "$IUSED"
+          kv inodes_free "$IFREE"
+          kv inodes_use_pct "$IUSEP"
+        fi
+
+        kv size_var_k "$(dir_size_k /var)"
+        kv size_var_log_k "$(dir_size_k /var/log)"
+        kv size_opt_k "$(dir_size_k /opt)"
+        kv size_srv_k "$(dir_size_k /srv)"
+        kv size_data_k "$(dir_size_k /data)"
+        kv size_home_k "$(dir_size_k /home)"
+        kv size_var_lib_docker_k "$(dir_size_k /var/lib/docker)"
+        kv size_journal_k "$(dir_size_k /var/log/journal)"
+
+        # =========================
+        # Decisões por TYPE
+        # =========================
+        hdr "TYPE: $TYPE"
+        case "$TYPE" in
+          openwrt)
+            hdr "OpenWrt: focos típicos"
+            sub "mounts relevantes"
+            mount 2>/dev/null | sed -n '1,120p' || true
+            top_dirs /overlay
+            top_dirs /root
+            top_dirs /etc
+            top_dirs /tmp
+            top_files_varlog
+            ;;
+          proxmox)
+            hdr "Proxmox: focos típicos"
+            top_dirs /var/lib/vz
+            top_dirs /var/lib/pve-cluster
+            top_dirs /var/log
+            top_dirs /var/cache
+            top_files_varlog
+            journald_usage
+            ;;
+          lxc_sem_privilegios|lxc_priveligiado|vm|maquina_linux)
+            hdr "Linux/LXC/VM: focos típicos"
+            top_dirs /var
+            top_dirs /var/log
+            top_dirs /opt
+            top_dirs /srv
+            top_dirs /data
+            top_dirs /home
+            top_files_varlog
+            journald_usage
+            ;;
+          *)
+            hdr "Desconhecido: análise genérica"
+            top_dirs /var
+            top_dirs /opt
+            top_dirs /data
+            top_files_varlog
+            journald_usage
+            ;;
+        esac
+
+        # =========================
+        # Docker
+        # =========================
+        if [ "$DOCKER" = "true" ]; then
+          hdr "Docker: consumo"
+          if has docker; then
+            if docker info >/dev/null 2>&1; then
+              echo "[DOCKER] daemon=ok"
+              docker system df 2>/dev/null || true
+              [ -d /var/lib/docker ] && top_dirs /var/lib/docker
+            else
+              echo "[DOCKER] daemon=erro (sem system df)"
+              [ -d /var/lib/docker ] && top_dirs /var/lib/docker
+            fi
+          else
+            echo "[DOCKER] comando docker não existe (mas base.tmp diz docker=true)"
+            [ -d /var/lib/docker ] && top_dirs /var/lib/docker
+          fi
+        else
+          echo "[DOCKER] Não presente (ignorado)"
+        fi
+
+        hdr "Portainer"
+        if [ "$PORTAINER" = "true" ]; then
+          echo "[PORTAINER] Agent presente"
+        else
+          echo "[PORTAINER] Agent não presente (ignorado)"
+        fi
+
+        echo
+        echo "=== [FIM] $(ts) ==="
+        echo "[VARS] escrito em $VARS_FILE"
+        echo "--- $VARS_FILE ---"
+        cat "$VARS_FILE" || true
+        REMOTE
+    - autoSecureInput: 'false'
+      description: Executa de acordo com valores de 1
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        STATE_FILE="/tmp/base.tmp"
+
+        HOST="${RD_OPTION_HOSTNAME}"
+        SSH_USER="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS="-p ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new"
+
+        # =========================================================
+        # LOCAL: validação mínima do STATE_FILE
+        # =========================================================
+        if [ ! -f "$STATE_FILE" ]; then
+          echo "ERRO: ficheiro $STATE_FILE não existe"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        source "$STATE_FILE"
+
+        : "${ip:?ERRO: ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: docker não definido em $STATE_FILE}"
+        : "${portainer:?ERRO: portainer não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) echo "ERRO: docker inválido: $docker"; exit 1;; esac
+        case "$portainer" in true|false) ;; *) echo "ERRO: portainer inválido: $portainer"; exit 1;; esac
+
+        echo "[STATE_LOCAL] ip=$ip type=$type docker=$docker portainer=$portainer"
+
+        # =========================================================
+        # REMOTO: tudo corre via ssh (sh) e volta no OUT
+        # Opção 2: re-source do STATE_FILE no remoto
+        # =========================================================
+        OUT="$(ssh ${SSH_OPTS} "${SSH_USER}@${HOST}" sh -s -- "${HOST}" "${STATE_FILE}" <<'REMOTE'
+        set -eu
+        has(){ command -v "$1" >/dev/null 2>&1; }
+        out(){ printf "[%s] %s\n" "$1" "$2"; }
+
+        HOST_ARG="$1"
+        STATE_FILE="$2"
+
+        # --- validação mínima remota ---
+        if [ ! -f "$STATE_FILE" ]; then
+          out "ERROR" "no remoto: ficheiro $STATE_FILE não existe (não dá para re-source)"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+
+        : "${ip:?ERRO: ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: docker não definido em $STATE_FILE}"
+        : "${portainer:?ERRO: portainer não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) out "ERROR" "docker inválido: $docker"; exit 1;; esac
+        case "$portainer" in true|false) ;; *) out "ERROR" "portainer inválido: $portainer"; exit 1;; esac
+
+        out "STATE" "host=$HOST_ARG ip=$ip type=$type docker=$docker portainer=$portainer"
+        out "WHOAMI" "$(whoami)"
+
+        # =========================
+        # Libertar espaço por TYPE
+        # (só corre o que faz sentido para cada tipo)
+        # =========================
+        case "$type" in
+          lxc_sem_privilegios|lxc_priveligiado|vm|maquina_linux)
+            # Linux “normal” (Debian/Ubuntu/etc). Evita coisas destrutivas.
+            out "CLEANUP" "Linux genérico (logs + caches + tmp)"
+
+            # 1) journald (se existir)
+            if command -v journalctl >/dev/null 2>&1; then
+              out "CLEANUP_JOURNALD" "Vacuum"
+              journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+              journalctl --vacuum-size=200M >/dev/null 2>&1 || true
+            fi
+
+            # 2) limpar /tmp e /var/tmp (ficheiros antigos)
+            out "CLEANUP_TMP" "Limpar ficheiros antigos"
+            find /tmp -xdev -type f -mtime +2 -delete 2>/dev/null || true
+            find /var/tmp -xdev -type f -mtime +7 -delete 2>/dev/null || true
+
+            # 3) caches de APT/APK/DNF (o que existir)
+            if command -v apt-get >/dev/null 2>&1; then
+              out "CLEANUP_APT" "apt-get clean/autoclean"
+              apt-get -y autoclean >/dev/null 2>&1 || true
+              apt-get -y clean >/dev/null 2>&1 || true
+              rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+            fi
+
+            if command -v apk >/dev/null 2>&1; then
+              out "CLEANUP_APK" "apk cache clean"
+              apk cache clean >/dev/null 2>&1 || true
+            fi
+
+            if command -v dnf >/dev/null 2>&1; then
+              out "CLEANUP_DNF" "dnf clean all"
+              dnf clean all >/dev/null 2>&1 || true
+            fi
+
+            if command -v yum >/dev/null 2>&1; then
+              out "CLEANUP_YUM" "yum clean all"
+              yum clean all >/dev/null 2>&1 || true
+            fi
+
+            # 4) logrotate (se existir)
+            if command -v logrotate >/dev/null 2>&1 && [ -f /etc/logrotate.conf ]; then
+              out "CLEANUP_LOGROTATE" "forçar rotação"
+              logrotate -f /etc/logrotate.conf >/dev/null 2>&1 || true
+            fi
+            ;;
+          proxmox)
+            # Proxmox (host): limpeza de caches + logs + kernels antigos
+            out "CLEANUP" "Proxmox (apt + logs + kernels antigos)"
+
+            if command -v journalctl >/dev/null 2>&1; then
+              out "CLEANUP_JOURNALD" "Vacuum"
+              journalctl --vacuum-time=7d >/dev/null 2>&1 || true
+              journalctl --vacuum-size=500M >/dev/null 2>&1 || true
+            fi
+
+            if command -v apt-get >/dev/null 2>&1; then
+              out "CLEANUP_APT" "autoclean/clean + autoremove"
+              apt-get -y autoclean >/dev/null 2>&1 || true
+              apt-get -y clean >/dev/null 2>&1 || true
+              apt-get -y autoremove --purge >/dev/null 2>&1 || true
+              rm -rf /var/lib/apt/lists/* 2>/dev/null || true
+            fi
+
+            # kernels antigos (só se o utilitário existir)
+            if command -v pve-kernel >/dev/null 2>&1 && command -v pve-efiboot-tool >/dev/null 2>&1; then
+              out "CLEANUP_PVE_KERNELS" "tentar remover kernels não usados (seguro por defeito)"
+              # Nota: mantemos 2 kernels recentes (best-effort). Se falhar, não quebra.
+              apt-get -y autoremove --purge >/dev/null 2>&1 || true
+            fi
+            ;;
+          openwrt)
+            # OpenWrt: limpar caches/opkg e logs (depende se usa logread/logd)
+            out "CLEANUP" "OpenWrt (opkg + tmp + logs)"
+
+            if command -v opkg >/dev/null 2>&1; then
+              out "CLEANUP_OPKG" "remover listas/caches"
+              rm -rf /tmp/opkg-lists 2>/dev/null || true
+              rm -rf /var/opkg-lists 2>/dev/null || true
+              rm -rf /var/cache/opkg 2>/dev/null || true
+              opkg clean >/dev/null 2>&1 || true
+            fi
+
+            out "CLEANUP_TMP" "limpar /tmp (ficheiros antigos)"
+            find /tmp -xdev -type f -mtime +2 -delete 2>/dev/null || true
+
+            # logs em RAM (logread) não “libertam disco”, mas alguns setups guardam em ficheiros
+            if [ -d /var/log ]; then
+              out "CLEANUP_VARLOG" "limpar logs antigos em /var/log"
+              find /var/log -xdev -type f -mtime +7 -delete 2>/dev/null || true
+            fi
+            ;;
+          *)
+            out "CLEANUP" "TYPE desconhecido: $type (sem ações)"
+            ;;
+        esac
+
+        # =========================
+        # Libertar espaço por Docker
+        # (só corre se docker=true)
+        # =========================
+        if [ "$docker" = "true" ]; then
+          out "CLEANUP_DOCKER" "Docker presente (prune seguro por defeito)"
+
+          # Só avança se o daemon responder
+          if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+            # 1) remover objetos não usados (sem volumes por defeito)
+            out "CLEANUP_DOCKER_SYSTEM" "docker system prune -af"
+            docker system prune -af >/dev/null 2>&1 || true
+
+            # 2) imagens dangling / builder cache (best-effort)
+            out "CLEANUP_DOCKER_BUILDKIT" "docker builder prune -af"
+            docker builder prune -af >/dev/null 2>&1 || true
+
+            # NOTA: volumes ficam de fora por segurança.
+            # Se quiseres também volumes, eu dou-te a variante com um flag explícito.
+          else
+            out "CLEANUP_DOCKER" "Docker instalado mas daemon/socket indisponível"
+          fi
+        fi
+
+        exit 0
+        REMOTE
+        )"
+
+        printf "%s\n" "$OUT"
+    - autoSecureInput: 'false'
+      description: Medição Final
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        STATE_FILE="/tmp/base.tmp"
+
+        # =========================
+        # No servidor Rundeck: lê opções do Job
+        # =========================
+        HOST="${RD_OPTION_HOSTNAME:?ERRO: RD_OPTION_HOSTNAME não definido}"
+        SSH_USER="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS="-p ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new"
+
+        # opcional: mount alvo (se não vier, usa "/")
+        MOUNT="${RD_OPTION_MOUNT:-/}"
+
+        # =========================
+        # Liga por SSH ao host remoto e executa:
+        #  - carrega /tmp/base.tmp NO REMOTO
+        #  - valida vars
+        #  - executa análise
+        # =========================
+        ssh ${SSH_OPTS} "${SSH_USER}@${HOST}" sh -s -- "${STATE_FILE}" "${MOUNT}" <<'REMOTE'
+        set -eu
+
+        STATE_FILE="$1"
+        MOUNT="$2"
+
+        # =========================
+        # NO REMOTO: valida e carrega STATE (/tmp/base.tmp)
+        # =========================
+        if [ ! -f "$STATE_FILE" ]; then
+          echo "ERRO: (remoto) ficheiro $STATE_FILE não existe"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+
+        : "${ip:?ERRO: (remoto) ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: (remoto) type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: (remoto) docker não definido em $STATE_FILE}"
+        : "${portainer:?ERRO: (remoto) portainer não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) echo "ERRO: (remoto) docker inválido: $docker"; exit 1;; esac
+        case "$portainer" in true|false) ;; *) echo "ERRO: (remoto) portainer inválido: $portainer"; exit 1;; esac
+
+        TYPE="$type"
+        DOCKER="$docker"
+        PORTAINER="$portainer"
+
+        ts() { date -Is 2>/dev/null || date; }
+
+        echo "[REMOTE] host=$(hostname 2>/dev/null || echo unknown) user=$(whoami 2>/dev/null || echo unknown)"
+        echo "[STATE] ip=$ip type=$TYPE docker=$DOCKER portainer=$PORTAINER mount=$MOUNT"
+        echo "=== [ANALISE ESPACO] $(ts) ==="
+
+        has(){ command -v "$1" >/dev/null 2>&1; }
+
+        hdr(){ echo; echo "=== $* ==="; }
+        sub(){ echo "--- $* ---"; }
+
+        # =========================
+        # Base: df + inodes (sempre)
+        # =========================
+        hdr "FS: espaço e inodes"
+        sub "df (space)"
+        DF_LINE="$(df -kP "$MOUNT" 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        if [ -z "${DF_LINE:-}" ]; then
+          DF_LINE="$(df -kP 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        fi
+        echo "$DF_LINE" | awk '{printf "Filesystem=%s Size=%sK Used=%sK Avail=%sK UseP=%s Mount=%s\n",$1,$2,$3,$4,$5,$6}' 2>/dev/null || true
+        df -hP "$MOUNT" 2>/dev/null || df -hP 2>/dev/null || true
+
+        sub "df (inodes)"
+        DFI_LINE="$(df -iP "$MOUNT" 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        if [ -z "${DFI_LINE:-}" ]; then
+          DFI_LINE="$(df -iP 2>/dev/null | awk 'NR==2{print $0}' || true)"
+        fi
+        echo "$DFI_LINE" | awk '{printf "Inodes=%s IUsed=%s IFree=%s IUseP=%s\n",$2,$3,$4,$5}' 2>/dev/null || true
+        df -iP "$MOUNT" 2>/dev/null || df -iP 2>/dev/null || true
+
+        # =========================
+        # helper: top dirs/files (rápido, limitado)
+        # =========================
+        dir_size_k() {
+          p="$1"
+          [ -d "$p" ] || { echo 0; return 0; }
+          if du -sk "$p" >/dev/null 2>&1; then
+            du -sk "$p" 2>/dev/null | awk '{print $1}' || echo 0
+          else
+            echo 0
+          fi
+        }
+
+        top_dirs() {
+          p="$1"
+          [ -d "$p" ] || return 0
+          sub "top dirs: $p"
+          if du -xhd1 "$p" >/dev/null 2>&1; then
+            du -xhd1 "$p" 2>/dev/null | sort -h | tail -n 15 || true
+          else
+            du -hd1 "$p" 2>/dev/null | sort -h | tail -n 15 || true
+          fi
+        }
+
+        top_files_varlog() {
+          [ -d /var/log ] || return 0
+          sub "top /var/log (files)"
+          if find /var/log -type f -printf '' >/dev/null 2>&1; then
+            find /var/log -type f -printf '%s\t%p\n' 2>/dev/null \
+              | sort -nr | head -n 10 \
+              | awk '{printf "%.1fMiB\t%s\n", $1/1024/1024, $2}'
+          else
+            du -a /var/log 2>/dev/null | sort -nr | head -n 10 || true
+          fi
+        }
+
+        journald_usage() {
+          if has journalctl; then
+            sub "journald disk-usage"
+            journalctl --disk-usage 2>/dev/null || true
+          fi
+        }
+
+        # =========================
+        # VARS FILE (no remoto)
+        # =========================
+        VARS_FILE="/tmp/space_end.vars"
+        : > "$VARS_FILE"
+        kv() { echo "$1=$2" >> "$VARS_FILE"; }
+
+        kv ts "$(ts)"
+        kv host "$(hostname 2>/dev/null || echo unknown)"
+        kv ip "$ip"
+        kv type "$TYPE"
+        kv mount "$MOUNT"
+        kv docker "$DOCKER"
+        kv portainer "$PORTAINER"
+
+        # === FS (space) ===
+        if [ -n "${DF_LINE:-}" ]; then
+          FS_K="$(echo "$DF_LINE" | awk '{print $2}')"
+          USED_K="$(echo "$DF_LINE" | awk '{print $3}')"
+          AVAIL_K="$(echo "$DF_LINE" | awk '{print $4}')"
+          USEP="$(echo "$DF_LINE" | awk '{gsub("%","",$5); print $5}')"
+          kv fs_size_k "$FS_K"
+          kv fs_used_k "$USED_K"
+          kv fs_avail_k "$AVAIL_K"
+          kv fs_use_pct "$USEP"
+        fi
+
+        # === INODES ===
+        if [ -n "${DFI_LINE:-}" ]; then
+          INODES="$(echo "$DFI_LINE" | awk '{print $2}')"
+          IUSED="$(echo "$DFI_LINE" | awk '{print $3}')"
+          IFREE="$(echo "$DFI_LINE" | awk '{print $4}')"
+          IUSEP="$(echo "$DFI_LINE" | awk '{gsub("%","",$5); print $5}')"
+          kv inodes_total "$INODES"
+          kv inodes_used "$IUSED"
+          kv inodes_free "$IFREE"
+          kv inodes_use_pct "$IUSEP"
+        fi
+
+        # === DIR SIZES ===
+        kv size_var_k "$(dir_size_k /var)"
+        kv size_var_log_k "$(dir_size_k /var/log)"
+        kv size_opt_k "$(dir_size_k /opt)"
+        kv size_srv_k "$(dir_size_k /srv)"
+        kv size_data_k "$(dir_size_k /data)"
+        kv size_home_k "$(dir_size_k /home)"
+        kv size_var_lib_docker_k "$(dir_size_k /var/lib/docker)"
+        kv size_journal_k "$(dir_size_k /var/log/journal)"
+
+
+        # (resto do teu script remoto fica igual daqui para baixo...)
+        # ...
+        REMOTE
+    - autoSecureInput: 'false'
+      description: Comparação
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        STATE_FILE="/tmp/base.tmp"
+
+        # =========================
+        # No servidor Rundeck: lê opções do Job
+        # =========================
+        HOST="${RD_OPTION_HOSTNAME:?ERRO: RD_OPTION_HOSTNAME não definido}"
+        SSH_USER="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS="-p ${SSH_PORT} -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new"
+        MOUNT="${RD_OPTION_MOUNT:-/}"
+
+        # =========================
+        # Liga por SSH ao host remoto e compara /tmp/space_init.vars vs /tmp/space_end.vars
+        # (carrega /tmp/base.tmp NO REMOTO)
+        # =========================
+        ssh ${SSH_OPTS} "${SSH_USER}@${HOST}" sh -s -- "${STATE_FILE}" "${MOUNT}" <<'REMOTE'
+        set -eu
+
+        STATE_FILE="$1"
+        MOUNT="$2"
+
+        # =========================
+        # NO REMOTO: valida e carrega STATE (/tmp/base.tmp)
+        # =========================
+        if [ ! -f "$STATE_FILE" ]; then
+          echo "ERRO: (remoto) ficheiro $STATE_FILE não existe"
+          exit 1
+        fi
+
+        # shellcheck disable=SC1090
+        . "$STATE_FILE"
+
+        : "${ip:?ERRO: (remoto) ip não definido em $STATE_FILE}"
+        : "${type:?ERRO: (remoto) type não definido em $STATE_FILE}"
+        : "${docker:?ERRO: (remoto) docker não definido em $STATE_FILE}"
+        : "${portainer:?ERRO: (remoto) portainer não definido em $STATE_FILE}"
+
+        case "$docker" in true|false) ;; *) echo "ERRO: (remoto) docker inválido: $docker"; exit 1;; esac
+        case "$portainer" in true|false) ;; *) echo "ERRO: (remoto) portainer inválido: $portainer"; exit 1;; esac
+
+        TYPE="$type"
+        DOCKER="$docker"
+        PORTAINER="$portainer"
+
+        INIT="/tmp/space_start.vars"
+        END="/tmp/space_end.vars"
+
+        ts(){ date -Is 2>/dev/null || date; }
+
+        echo "[REMOTE] host=$(hostname 2>/dev/null || echo unknown) user=$(whoami 2>/dev/null || echo unknown)"
+        echo "[STATE] ip=$ip type=$TYPE docker=$DOCKER portainer=$PORTAINER mount=$MOUNT"
+        echo "=== [COMPARE] $(ts) ==="
+
+        if [ ! -f "$INIT" ]; then
+          echo "ERRO: ficheiro init não existe: $INIT"
+          exit 1
+        fi
+        if [ ! -f "$END" ]; then
+          echo "ERRO: ficheiro end não existe: $END"
+          exit 1
+        fi
+
+        # lê KV sem eval
+        getv() {
+          f="$1"; k="$2"
+          awk -F= -v kk="$k" '$1==kk {sub(/^[^=]*=/,""); print; exit}' "$f" 2>/dev/null || true
+        }
+
+        fmt_kb() {
+          v="$1"
+          sign=""
+          if [ "$v" -lt 0 ] 2>/dev/null; then
+            sign="-"
+            v=$(( -v ))
+          fi
+          if [ "$v" -ge 1048576 ] 2>/dev/null; then
+            echo "${sign}$(( v / 1048576 ))GiB"
+          elif [ "$v" -ge 1024 ] 2>/dev/null; then
+            echo "${sign}$(( v / 1024 ))MiB"
+          else
+            echo "${sign}${v}KiB"
+          fi
+        }
+
+        KEYS_KB="
+        fs_size_k
+        fs_used_k
+        fs_avail_k
+        size_var_k
+        size_var_log_k
+        size_opt_k
+        size_srv_k
+        size_data_k
+        size_home_k
+        size_var_lib_docker_k
+        size_journal_k
+        "
+
+        KEYS_N="
+        fs_use_pct
+        inodes_total
+        inodes_used
+        inodes_free
+        inodes_use_pct
+        "
+
+        echo
+        echo "=== [DELTA] (END - INIT) ==="
+        printf "%-22s %-14s %-14s %-14s\n" "KEY" "INIT" "END" "DELTA"
+        echo "----------------------------------------------------------------"
+
+        for k in $KEYS_KB; do
+          a="$(getv "$INIT" "$k")"; b="$(getv "$END" "$k")"
+          [ -n "${a:-}" ] || a=0
+          [ -n "${b:-}" ] || b=0
+          case "$a" in *[!0-9]* ) a=0 ;; esac
+          case "$b" in *[!0-9]* ) b=0 ;; esac
+          d=$(( b - a ))
+          printf "%-22s %-14s %-14s %-14s\n" "$k" "$(fmt_kb "$a")" "$(fmt_kb "$b")" "$(fmt_kb "$d")"
+        done
+
+        for k in $KEYS_N; do
+          a="$(getv "$INIT" "$k")"; b="$(getv "$END" "$k")"
+          [ -n "${a:-}" ] || a=0
+          [ -n "${b:-}" ] || b=0
+          case "$a" in *[!0-9]* ) a=0 ;; esac
+          case "$b" in *[!0-9]* ) b=0 ;; esac
+          d=$(( b - a ))
+          printf "%-22s %-14s %-14s %-14s\n" "$k" "$a" "$b" "$d"
+        done
+
+        echo
+        echo "=== [CHANGES] linhas diferentes (raw) ==="
+        grep -vE '^(ts|host)=' "$INIT" 2>/dev/null | sort > /tmp/.space_init.sorted || true
+        grep -vE '^(ts|host)=' "$END"  2>/dev/null | sort > /tmp/.space_end.sorted  || true
+        diff -u /tmp/.space_init.sorted /tmp/.space_end.sorted || true
+
+        echo
+        echo "=== [FIM] $(ts) ==="
+        exit 0
+        REMOTE
+    keepgoing: false
+    strategy: node-first
+  uuid: b7311655-61c5-4ad7-a0e5-c2a51916eedf
+

@@ -1,0 +1,146 @@
+version: "3.8"
+
+services:
+
+  alertmanager-ntfy-relay:
+    image: therobbielee/alertmanager-ntfy-relay:latest
+    container_name: alertmanager-ntfy-relay
+    ports:
+      - "8500:8080"
+    restart: unless-stopped
+    volumes:
+      - "/opt/monitoring/ntfy-relay/message_template.tmpl:/app/message_template.tmpl"
+      - "/opt/monitoring/ntfy-relay/title_template.tmpl:/app/title_template.tmpl"
+    environment:
+      - NTFY_TOPIC=prometheus
+      - NTFY_SERVER=https://ntfy.lbtec.org
+#      - NTFY_USERNAME=
+#      - NTFY_PASSWORD=
+#      - NTFY_TOKEN=
+      - NTFY_LABELS=alertname,severity,instance,group,job
+      - NTFY_ANNOTATIONS=summary,description
+      - NTFY_TITLE=Alerta Prometheus
+      - NTFY_DEFAULT_PRIORITY=3
+      - NTFY_FIRING_PRIORITY=4
+      - NTFY_RESOLVED_PRIORITY=2
+
+  grafana:
+    image: grafana/grafana:10.4.6
+    container_name: grafana
+    user: "472:472"
+    environment:
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-clock-panel
+      - GF_SECURITY_ALLOW_EMBEDDING=true
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+      - GF_SERVER_ROOT_URL=https://grafana.lbtec.org
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - /opt/monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=30d
+      - --web.enable-lifecycle
+    volumes:
+      - /opt/monitoring/prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    volumes:
+      - /opt/monitoring/alertmanager:/etc/alertmanager:ro
+      - alertmanager-data:/alertmanager
+    ports:
+      - "9093:9093"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:2.9.8
+    container_name: loki
+    command: ["-config.file=/etc/loki/config.yml"]
+    volumes:
+      - /opt/monitoring/loki:/etc/loki:ro
+      - loki-data:/loki
+    ports:
+      - "3100:3100"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: promtail
+    command: ["-config.file=/etc/promtail/config.yml"]
+    volumes:
+      - /opt/monitoring/promtail:/etc/promtail:ro
+      - /var/log:/var/log:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    ports:
+      - "1514:1514/tcp"
+      - "1514:1514/udp"
+      - "9080:9080"
+    depends_on:
+      loki:
+        condition: service_healthy
+    restart: unless-stopped
+
+  blackbox:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    volumes:
+      - /opt/monitoring/blackbox:/etc/blackbox:ro
+    cap_add:
+      - NET_RAW
+    ports:
+      - "9115:9115"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9115/metrics"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+    restart: unless-stopped
+
+volumes:
+  grafana-data:
+  prometheus-data:
+  alertmanager-data:
+  loki-data:

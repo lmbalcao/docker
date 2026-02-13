@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: immich-microservices
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: immich-microservices } }
+  template:
+    metadata: { labels: { app: immich-microservices } }
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        fsGroupChangePolicy: OnRootMismatch
+      containers:
+        - name: micro
+          image: ghcr.io/immich-app/immich-microservices:release
+          env:
+            - name: DB_HOSTNAME
+              value: postgres.immich.svc.cluster.local
+            - name: DB_USERNAME
+              value: immich
+            - name: DB_DATABASE_NAME
+              value: immich
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: immich-secret
+                  key: db-password
+            - name: REDIS_HOSTNAME
+              value: redis.immich.svc.cluster.local
+            - name: TZ
+              value: Europe/Lisbon
+          volumeMounts:
+            - name: immich-rwx
+              mountPath: /usr/src/app/upload
+              subPath: upload
+      volumes:
+        - name: immich-rwx
+          persistentVolumeClaim:
+            claimName: immich-rwx

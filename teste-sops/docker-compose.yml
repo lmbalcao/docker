@@ -1,0 +1,12 @@
+# /config/.sops.yaml ou na raiz do repositório
+creation_rules:
+    # Encripta todos os ficheiros .yml
+    - path_regex: \.yml
+      key_groups:
+        - age:
+            - age1fhr89c4lc2ccaxegutxad3e65jkkj73udhja4mykyz2dw8d4vsdscd3w3r
+    # Encripta todos os ficheiros .env
+    - path_regex: \.env
+      key_groups:
+        - age:
+            - age1fhr89c4lc2ccaxegutxad3e65jkkj73udhja4mykyz2dw8d4vsdscd3w3r

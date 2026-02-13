@@ -1,0 +1,98 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 65.0.0
+    helm:
+      skipCrds: false             # <--- GARANTE instalação dos CRDs do chart
+      values: |
+        prometheusOperator:
+          tls:
+            enabled: false        # <--- evita 10250/TLS; simplifica readiness/liveness
+
+        grafana:
+          # ===== INGRESS (mantido) =====
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              kubernetes.io/ingress.class: traefik
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            hosts: [ "grafana.lbtec.org" ]
+            tls:
+              - secretName: grafana-tls
+                hosts: [ "grafana.lbtec.org" ]
+
+          # ===== ARRANQUE/LOGS/REDE =====
+          env:
+            GF_SERVER_HTTP_ADDR: "0.0.0.0"
+            GF_SERVER_HTTP_PORT: "3000"
+            GF_SERVER_PROTOCOL: "http"
+            GF_LOG_LEVEL: "debug"
+            GF_LOG_MODE: "console"
+            GF_LOG_CONSOLE_FORMAT: "text"
+          grafana.ini:
+            server:
+              http_addr: 0.0.0.0
+              http_port: 3000
+              protocol: http
+
+          # ===== PROBES MAIS TOLERANTES =====
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 3000
+              scheme: HTTP
+            initialDelaySeconds: 60
+            periodSeconds: 20
+            failureThreshold: 6
+            timeoutSeconds: 5
+
+          # ===== PERMISSÕES NO VOLUME =====
+          initChownData: true
+          securityContext:
+            runAsUser: 472
+            runAsGroup: 472
+          podSecurityContext:
+            fsGroup: 472
+            fsGroupChangePolicy: "OnRootMismatch"
+
+        prometheus:
+          ingress:
+            enabled: true
+            ingressClassName: traefik
+            annotations:
+              cert-manager.io/cluster-issuer: letsencrypt-prod
+              kubernetes.io/ingress.class: traefik
+              traefik.ingress.kubernetes.io/router.entrypoints: websecure
+            hosts: [ "prometheus.lbtec.org" ]
+            tls:
+              - secretName: prometheus-tls
+                hosts: [ "prometheus.lbtec.org" ]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - PruneLast=true
+      - ServerSideApply=true

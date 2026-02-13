@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: pv-media-rwx
+spec:
+  storageClassName: ""        # <-- adicionar
+  capacity:
+    storage: 10Ti
+  accessModes:
+    - ReadWriteMany
+  persistentVolumeReclaimPolicy: Retain
+  nfs:
+    server: 192.168.55.100
+    path: /media
+  mountOptions:
+    - nfsvers=4.1
+    - rsize=262144
+    - wsize=262144
+    - hard
+    - noatime

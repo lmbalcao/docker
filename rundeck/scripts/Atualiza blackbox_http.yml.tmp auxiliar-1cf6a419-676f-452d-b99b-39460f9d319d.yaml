@@ -1,0 +1,74 @@
+- defaultTab: nodes
+  description: Não executar individualmente
+  executionEnabled: true
+  id: 1cf6a419-676f-452d-b99b-39460f9d319d
+  loglevel: INFO
+  name: Atualiza blackbox_http.yml.tmp auxiliar
+  nodeFilterEditable: false
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: false
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: cria nova versão de blackbox_http.yml.tmp
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        OUT="/tmp/blackbox_http.yml.tmp"
+        TMP="$(mktemp)"
+        trap 'rm -f "$TMP" "$TMP.sorted"' EXIT
+
+        NODELIST="${RD_NODELIST:-}"
+        [ -n "$NODELIST" ] || { echo "ERRO: RD_NODELIST vazio"; exit 1; }
+
+        SSH_USER="${RD_OPTION_SSH_USER:-root}"
+        SSH_PORT="${RD_OPTION_SSH_PORT:-22}"
+        SSH_OPTS=(-p "$SSH_PORT" -o BatchMode=yes -o ConnectTimeout=8 -o StrictHostKeyChecking=accept-new)
+
+        read -r -d '' REMOTE_EXTRACT <<'RCMD'
+        set -euo pipefail
+        DIR="/data/nginx/proxy_host"
+        [ -d "$DIR" ] || exit 0
+        shopt -s nullglob
+        files=("$DIR"/*.conf)
+        [ "${#files[@]}" -gt 0 ] || exit 0
+        awk '
+          $1=="server_name"{
+            for(i=2;i<=NF;i++){
+              gsub(/;$/, "", $i)
+              if($i ~ /\.lbtec\.org$/ && $i !~ /^\*\./){
+                print $i
+              }
+            }
+          }
+        ' "${files[@]}" 2>/dev/null | sort -u
+        RCMD
+
+        IFS=',' read -r -a NODES <<< "$NODELIST"
+        for node in "${NODES[@]}"; do
+          node="$(echo "$node" | xargs)"
+          [ -n "$node" ] || continue
+          ssh "${SSH_OPTS[@]}" "${SSH_USER}@${node}" "bash -lc '$REMOTE_EXTRACT'" >> "$TMP" || true
+        done
+
+        sort -u "$TMP" > "$TMP.sorted"
+
+        {
+          echo "# gerado por Rundeck em $(date -Is)"
+          echo "- labels:"
+          echo "    job: blackbox_http"
+          echo "  targets:"
+          while IFS= read -r host; do
+            echo "    - $host"
+          done < "$TMP.sorted"
+        } > "$OUT"
+
+        echo "OK: escrito $OUT"
+        echo "Total targets: $(wc -l < "$TMP.sorted" | tr -d ' ')"
+    keepgoing: false
+    strategy: node-first
+  uuid: 1cf6a419-676f-452d-b99b-39460f9d319d
+

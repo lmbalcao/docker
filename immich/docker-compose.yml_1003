@@ -1,0 +1,148 @@
+name: immich
+
+services:
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - /opt:/opt
+      - /mnt:/mnt
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+
+        apk add --no-cache coreutils
+
+        echo "[init-host] Criar diretórios base (1003:1003)..."
+
+        mkdir -p /mnt/data/upload
+        touch /mnt/data/upload/.immich
+        chown -R 1003:1003 /mnt/data/upload
+
+        mkdir -p /mnt/data/encoded-video
+        touch /mnt/data/encoded-video/.immich
+        chown -R 1003:1003 /mnt/data/encoded-video
+
+        mkdir -p /mnt/data/thumbnails
+        touch /mnt/data/thumbnails/.immich
+        chown -R 1003:1003 /mnt/data/thumbnails
+
+        mkdir -p /mnt/data/profile
+        touch /mnt/data/profile/.immich
+        chown -R 1003:1003 /mnt/data/profile
+
+        mkdir -p /mnt/data/backups
+        touch /mnt/data/backups/.immich
+        chown -R 1003:1003 /mnt/data/backups
+
+        mkdir -p /opt/immich
+
+        mkdir -p /opt/immich/ml-cache
+        chown -R 1003:1003 /opt/immich/ml-cache
+
+        mkdir -p /opt/immich/ml-config
+        chown -R 1003:1003 /opt/immich/ml-config
+  
+        mkdir -p /opt/immich/cache
+        chown -R 1003:1003 /opt/immich/cache
+
+        echo "[init-host] Permissões Postgres (999:1003)..."
+
+        mkdir -p /opt/immich/db    
+        chown -R 999:1003 /opt/immich/db || true
+        find /opt/immich/db -type d -exec chmod 700 {} \; || true
+        find /opt/immich/db -type f -exec chmod 600 {} \; || true
+
+        echo "[init-host] Permissões Redis (1003:1003)..."
+        
+        mkdir -p /opt/redis
+        chown -R 1003:1003 /opt/redis || true
+        find /opt/redis -type d -exec chmod 755 {} \; || true
+        find /opt/redis -type f -exec chmod 644 {} \; || true
+
+        echo "[init-host] Permissões Immich (1003:1003)..."
+
+        find /opt/immich -type d -exec chmod 755 {} \; || true
+        find /mnt/data -type d -exec chmod 755 {} \; || true
+
+        echo "[init-host] OK"
+
+
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:release
+    user: "1003:1003"
+    depends_on:
+      - database
+      - redis
+    volumes:
+      - /mnt/data:/data
+      - /etc/localtime:/etc/localtime:ro
+    environment:
+      TZ: Europe/Lisbon
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_USERNAME: immich
+      DB_PASSWORD: Password
+      DB_DATABASE_NAME: immich
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MACHINE_LEARNING_URL: http://immich-machine-learning:3003
+    ports:
+      - "2283:2283"
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    image: ghcr.io/immich-app/immich-machine-learning:release
+    user: "1003:1003"
+    volumes:
+      - /opt/immich/ml-cache:/cache
+      - /opt/immich/ml-config:/.config
+      - /opt/immich/cache:/.cache
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/valkey/valkey:8-bookworm@sha256:fea8b3e67b15729d4bb70589eb03367bab9ad1ee89c876f54327fc7c6e618571
+    user: "1003:1003"
+    volumes:
+      - /opt/redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW
+
+  database:
+    container_name: immich_postgres
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3-pgvectors0.2.0@sha256:41eacbe83eca995561fe43814fd4891e16e39632806253848efaf04d3c8a8b84
+    user: "999:1003"
+    environment:
+      POSTGRES_USER: immich
+      POSTGRES_PASSWORD: Password
+      POSTGRES_DB: immich
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    volumes:
+      - /opt/immich/db:/var/lib/postgresql/data
+    shm_size: 128mb
+    restart: always
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - NET_RAW

@@ -1,0 +1,61 @@
+- defaultTab: nodes
+  description: Popula /tmp/blackbox_http.yml.tmp
+  executionEnabled: true
+  id: 50594f87-dc99-4fc8-b0ac-d0299861746c
+  loglevel: INFO
+  maxMultipleExecutions: '0'
+  multipleExecutions: true
+  name: Atualiza blackbox_http.yml
+  nodeFilterEditable: false
+  nodefilters:
+    dispatch:
+      excludePrecedence: true
+      keepgoing: false
+      rankOrder: ascending
+      successOnEmptyNodeFilter: false
+      threadcount: '1'
+    filter: npm.*
+  nodesSelectedByDefault: true
+  plugins:
+    ExecutionLifecycle: {}
+  scheduleEnabled: true
+  sequence:
+    commands:
+    - autoSecureInput: 'false'
+      description: gera /tmp/hosts.tmp
+      passSecureInput: 'false'
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        DIR="/data/nginx/proxy_host"
+        OUT="/tmp/hosts.tmp"
+
+        [ -d "$DIR" ] || exit 0
+
+        # se não houver ficheiros .conf, sai limpo
+        shopt -s nullglob
+        files=("$DIR"/*.conf)
+        [ "${#files[@]}" -gt 0 ] || exit 0
+
+        awk '
+          $1=="server_name"{
+            for(i=2;i<=NF;i++){
+              gsub(/;$/, "", $i)
+              if($i ~ /\.lbtec\.org$/ && $i !~ /^\*\./){
+                print $i
+              }
+            }
+          }
+        ' "${files[@]}" 2>/dev/null \
+        | sort -u > "$OUT"
+    - description: exp blackbox
+      jobref:
+        childNodes: true
+        group: ''
+        name: Atualiza blackbox_http.yml.tmp auxiliar
+        uuid: 1cf6a419-676f-452d-b99b-39460f9d319d
+    keepgoing: false
+    strategy: sequential
+  uuid: 50594f87-dc99-4fc8-b0ac-d0299861746c
+

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: cert-manager-wrapper
+description: Wrapper Helm para instalar cert-manager (com CRDs)
+type: application
+version: 0.1.0
+
+dependencies:
+  - name: cert-manager
+    repository: https://charts.jetstack.io
+    version: ">=1.13.0 <1.15.0"

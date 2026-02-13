@@ -1,0 +1,147 @@
+version: "3.8"
+
+services:
+# One-shot init: cria diretórios no HOST e aplica permissões
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+    volumes:
+      - /opt:/opt
+      - /mnt:/mnt
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+        
+        # Criar diretórios
+        mkdir -p \
+          /opt/redisdata \
+          /opt/pgdata \
+          /opt/paperless \
+          /opt/scripts \
+          /opt/secrets \
+          /mnt/data/media \
+          /mnt/data/export \
+          /mnt/data/consume
+
+        # Permissões PostgreSQL (user postgres:1005)
+        chown -R 999:1005 /opt/pgdata || true
+        find /opt/pgdata -type d -exec chmod 700 {} \; || true
+        find /opt/pgdata -type f -exec chmod 600 {} \; || true
+
+        # Permissões Redis (user redis)
+        chown -R 999:999 /opt/redisdata || true
+        find /opt/redisdata -type d -exec chmod 755 {} \; || true
+        find /opt/redisdata -type f -exec chmod 644 {} \; || true
+
+        # Permissões Paperless (UID/GID 1005)
+        chown -R 1005:1005 /opt/paperless || true
+        chmod 755 /opt/paperless || true
+
+        # Dados de documentos (UID/GID 1005)
+        chown -R 1005:1005 \
+          /mnt/data/media \
+          /mnt/data/export \
+          /mnt/data/consume || true
+
+        # Scripts (UID/GID 1005)
+        chown -R 1005:1005 /opt/scripts || true
+
+        # Secrets (root only)
+        chown root:root /opt/secrets || true
+        chmod 700 /opt/secrets || true
+  broker:
+    image: docker.io/library/redis:8
+    restart: unless-stopped
+    volumes:
+      - /opt/redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "PING"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: docker.io/library/postgres:17
+    restart: unless-stopped
+    ports:
+      - 5432:5432 # ACESSO EXTERNO APENAS DO CLOUDBEAVER
+    environment:
+      TZ: "Europe/Lisbon"
+      POSTGRES_DB: "paperless"
+      POSTGRES_USER: "paperless"
+      POSTGRES_PASSWORD: "paperless"
+    volumes:
+      - /opt/pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+
+  webserver:
+    image: ghcr.io/paperless-ngx/paperless-ngx:latest
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      broker:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    environment:
+      # --- Sistema e permissões ---
+      USERMAP_UID: "1005"
+      USERMAP_GID: "1005"
+      TZ: "Europe/Lisbon"
+      PAPERLESS_TIME_ZONE: "Europe/Lisbon"
+
+      # --- Base de dados e Redis ---
+      PAPERLESS_DBHOST: "db"
+      PAPERLESS_DBPORT: "5432"
+      PAPERLESS_DBNAME: "paperless"
+      PAPERLESS_DBUSER: "paperless"
+      PAPERLESS_DBPASS: "paperless"
+      PAPERLESS_REDIS: "redis://broker:6379"
+
+      # --- URL / Proxy / Segurança ---
+      PAPERLESS_ALLOWED_HOSTS: "paper.lbtec.org,localhost,127.0.0.1,192.168.60.6"
+      PAPERLESS_CSRF_TRUSTED_ORIGINS: "https://paper.lbtec.org"
+      PAPERLESS_URL: "https://paper.lbtec.org"
+      PAPERLESS_SECURE_PROXY_SSL_HEADER: "HTTP_X_FORWARDED_PROTO,https"
+      PAPERLESS_DISABLE_REGULAR_LOGIN: "true"
+      PAPERLESS_REDIRECT_LOGIN_TO_SSO: "true"
+      # --- OIDC / Authentik (Allauth) ---
+      PAPERLESS_ENABLE_ALLAUTH: "true"
+      PAPERLESS_APPS: "allauth.socialaccount.providers.openid_connect"
+      PAPERLESS_SOCIALACCOUNT_PROVIDERS: >-
+        {
+          "openid_connect": {
+            "APPS": [
+              {
+                "provider_id": "authentik",
+                "name": "lbtec.org",
+                "client_id": "Z0TOMv82bMOTFl3YDZ1ilofYMAzkZP7RDF7cSyZ9",
+                "secret": "PSyLnl5GRpCljcjNpJm9hASSOK0PQsbhiW383FwnyGvjjVfHQF0TufBngcdaYjfaKfMTYrBc2iGS05Dys4xUa6l2ivOCYPwdNhmtONwbGmb9CXfY5n1ee3qDCFvPTaS2",
+                "settings": {
+                  "server_url": "https://auth.lbtec.org/application/o/paperless/.well-known/openid-configuration",
+                  "claims": { "username": "email" }
+                }
+              }
+            ],
+            "OAUTH_PKCE_ENABLED": "True"
+          }
+        }
+      PAPERLESS_AUTO_LOGIN: "true"
+      PAPERLESS_AUTO_CREATE: "true"
+      PAPERLESS_LOGOUT_REDIRECT_URL: "https://auth.lbtec.org/application/o/paperless/end-session/"
+
+    volumes:
+      - /opt/secrets/paperless.env:/opt/secrets/paperless.env:ro
+      - /opt/scripts:/scripts:ro
+      - /opt/paperless:/usr/src/paperless/data
+      - /mnt/data/media:/usr/src/paperless/media
+      - /mnt/data/export:/usr/src/paperless/export
+      - /mnt/data/consume:/usr/src/paperless/consume

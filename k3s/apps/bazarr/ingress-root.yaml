@@ -1,0 +1,29 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: bazarr-root
+  labels:
+    app.kubernetes.io/name: bazarr
+  annotations:
+    kubernetes.io/ingress.class: traefik
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.middlewares: media-bazarr-addprefix@kubernetescrd
+    # Mantém se quiseres usar cert-manager no futuro
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+spec:
+  ingressClassName: traefik
+  tls:
+    - secretName: bazarr-tls
+      hosts:
+        - bazarr.lbtec.org
+  rules:
+    - host: bazarr.lbtec.org
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: bazarr
+                port:
+                  number: 80

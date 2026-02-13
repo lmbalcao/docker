@@ -1,0 +1,84 @@
+services:
+
+  # init-host:
+  #   image: alpine:3.21
+  #   restart: "no"
+
+  #   # Mapear para os MESMOS caminhos que o script usa:
+  #   volumes:
+  #     - /opt/config:/opt/config
+  #     - /opt/scripts:/opt/scripts
+  #     - /opt/secrets:/opt/secrets
+  #     - /mnt/datadata:/mnt/datadata
+
+  #   entrypoint:
+  #     - /bin/sh
+  #     - -lc
+  #     - |
+  #       set -eu
+
+  #       echo "### Instalação de dependências base ###"
+  #       apk add --no-cache ca-certificates curl bash git sudo
+  #       echo "# OK #"
+
+  #       echo "### Criar estrutura GLOBAL ###"
+  #       mkdir -p \
+  #         /opt/config \
+  #         /mnt/datadata \
+  #         /opt/scripts \
+  #         /opt/secrets
+  #       echo "# OK #"
+
+  #       echo "### Definir permissões GLOBAIS UID:GID 1002:1002 ###"
+  #       chown -R 1002:1002 /opt/config /opt/scripts /opt/secrets /mnt/datadata || true
+  #       echo "# OK #"
+
+  #       echo "### Criar estrutura PARTICULAR ###"
+  #       mkdir -p \
+  #         /opt/homarr/appdata \
+  #         /opt/config/appdata
+  #       echo "# OK #"
+
+  #       echo "### Definir permissões PARTICULARES UID:GID 1002:1002 ###"
+  #       chown -R 1002:1002 /opt/homarr /opt/config/appdata || true
+  #      echo "# OK #"
+
+  homarr:
+    container_name: homarr
+    image: ghcr.io/homarr-labs/homarr:latest
+    restart: unless-stopped
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/homarr/appdata:/appdata
+
+    environment:
+      PUID: "1002"
+      PGID: "1002"
+      TZ: "Europe/Lisbon"
+      SECRET_ENCRYPTION_KEY: "CHANGE_ME_SECRET_ENCRYPTION_KEY"
+      AUTH_PROVIDERS: "credentials,oidc"
+      AUTH_OIDC_CLIENT_ID: "CHANGE_ME_OIDC_CLIENT_ID"
+      AUTH_OIDC_CLIENT_SECRET: "CHANGE_ME_OIDC_CLIENT_SECRET"
+      AUTH_OIDC_ISSUER: "https://auth.lbtec.org/application/o/homarr/"
+      AUTH_OIDC_URI: "https://auth.lbtec.org/application/o/authorize"
+      AUTH_OIDC_CLIENT_NAME: "lbtec.org"
+      OAUTH_ALLOW_DANGEROUS_EMAIL_ACCOUNT_LINKING: "true"
+      AUTH_LOGOUT_REDIRECT_URL: "https://auth.lbtec.org/application/o/homarr/end-session/"
+      OIDC_SLUG: "homarr"
+      AUTH_DOMAIN: "auth.lbtec.org"
+      HOMARR_FQDN: "www.lbtec.org"
+      NEXTAUTH_URL: "https://www.lbtec.org"
+      BASE_URL: "https://www.lbtec.org"
+      AUTH_OIDC_AUTO_LOGIN: "false"
+      ADMIN_GROUP: "authentik Admins"
+      AUTH_OIDC_GROUPS_ATTRIBUTE: "groups"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "10m"
+
+    ports:
+      - "7575:7575"

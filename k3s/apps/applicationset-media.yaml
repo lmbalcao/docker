@@ -1,0 +1,92 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: media-apps
+  namespace: argocd
+spec:
+  generators:
+    - list:
+        elements:
+          - name: media-nfs
+            path: apps/media-nfs
+            namespace: media
+          - name: sonarr
+            path: apps/sonarr
+            namespace: media
+          - name: radarr
+            path: apps/radarr
+            namespace: media
+          - name: lidarr
+            path: apps/lidarr
+            namespace: media
+          - name: readarr
+            path: apps/readarr
+            namespace: media
+          - name: prowlarr
+            path: apps/prowlarr
+            namespace: media
+          - name: bazarr
+            path: apps/bazarr
+            namespace: media
+          - name: jellyfin
+            path: apps/jellyfin
+            namespace: media
+          - name: tdarr
+            path: apps/tdarr
+            namespace: media
+# 2
+          - name: nextcloud
+            path: apps/nextcloud
+            namespace: nextcloud
+          - name: paperless
+            path: apps/paperless
+            namespace: paperless
+          - name: immich
+            path: apps/immich
+            namespace: immich
+          - name: n8n
+            path: apps/n8n
+            namespace: n8n
+          - name: rdtclient
+            path: apps/rdtclient
+            namespace: media
+          - name: monitoring
+            path: apps/monitoring
+            namespace: argocd   # <- É um Application do ArgoCD
+# 3
+          - name: stirlingpdf
+            path: apps/stirlingpdf
+            namespace: stirlingpdf
+          - name: ntfy
+            path: apps/ntfy
+            namespace: ntfy
+          - name: it-tools
+            path: apps/it-tools
+            namespace: it-tools
+          - name: vscode
+            path: apps/vscode
+            namespace: vscode
+
+
+            
+
+  template:
+    metadata:
+      name: '{{name}}'
+      labels:
+        app.kubernetes.io/part-of: media
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/lmbalcao/lbtec-k3s.git   # 👈 mete aqui o teu repo
+        targetRevision: main
+        path: '{{path}}'
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: '{{namespace}}'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true

@@ -1,0 +1,53 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nextcloud
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nextcloud
+  template:
+    metadata:
+      labels:
+        app: nextcloud
+    spec:
+      securityContext:
+        runAsUser: 33
+        runAsGroup: 33
+        fsGroup: 33
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: init-nfs-nextcloud
+          image: busybox:1.36
+          command: ["sh", "-c", "set -eux; mkdir -p /mnt/data/config /mnt/data/data"]
+          securityContext:
+            runAsUser: 33
+            runAsGroup: 33
+          volumeMounts:
+            - name: nextcloud-rwx
+              mountPath: /mnt/data
+      containers:
+        - name: nextcloud
+          image: lscr.io/linuxserver/nextcloud:latest
+          env:
+            - name: PUID
+              value: "33"
+            - name: PGID
+              value: "33"
+            - name: TZ
+              value: "Europe/Lisbon"
+          ports:
+            - containerPort: 443
+              name: https
+          volumeMounts:
+            - name: nextcloud-rwx
+              mountPath: /config
+              subPath: config
+            - name: nextcloud-rwx
+              mountPath: /data
+              subPath: data
+      volumes:
+        - name: nextcloud-rwx
+          persistentVolumeClaim:
+            claimName: nextcloud-rwx

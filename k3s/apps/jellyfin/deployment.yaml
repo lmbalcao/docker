@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyfin
+  labels:
+    app.kubernetes.io/name: jellyfin
+    app.kubernetes.io/part-of: media
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: jellyfin
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: jellyfin
+    spec:
+      # Arranca como root para a imagem da LinuxServer poder aplicar PUID/PGID e fazer chown;
+      # mantém apenas fsGroup para acesso a volumes (NFS).
+      securityContext:
+        fsGroup: 1027
+        fsGroupChangePolicy: OnRootMismatch
+      initContainers:
+        - name: init-nfs-jellyfin
+          image: busybox:1.36
+          command: ["sh", "-c", "set -eux; mkdir -p /init-media/jellyfin /init-downloads/jellyfin"]
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: media-rwx
+              mountPath: /init-media
+            - name: downloads-rwx
+              mountPath: /init-downloads
+      containers:
+        - name: jellyfin
+          image: lscr.io/linuxserver/jellyfin:10.9.9   # fixa a tag; evita :latest
+          imagePullPolicy: IfNotPresent
+          # NÃO definir runAsUser/runAsGroup aqui (deixa arrancar como root e depois desce para PUID/PGID)
+          env:
+            - name: PUID
+              value: "1007"
+            - name: PGID
+              value: "1027"
+            - name: TZ
+              value: "Europe/Lisbon"
+          ports:
+            - containerPort: 8096
+              name: http
+          volumeMounts:
+            - name: media-rwx
+              mountPath: /media
+              subPath: jellyfin
+            - name: downloads-rwx
+              mountPath: /downloads
+              subPath: jellyfin
+            - name: config
+              mountPath: /config
+            - name: transcode
+              mountPath: /transcode
+            - name: data
+              mountPath: /data
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 12
+            timeoutSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+              scheme: HTTP
+            initialDelaySeconds: 90
+            periodSeconds: 20
+            failureThreshold: 6
+            timeoutSeconds: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: "2"
+              memory: 2Gi
+      volumes:
+        - name: media-rwx
+          persistentVolumeClaim:
+            claimName: media-rwx
+        - name: downloads-rwx
+          persistentVolumeClaim:
+            claimName: downloads-rwx
+        - name: config
+          emptyDir: {}          # recomenda-se trocar por PVC para persistir (ver nota abaixo)
+        - name: transcode
+          emptyDir: {}          # espaço temporário de transcoding (rápido e gravável)
+        - name: data
+          emptyDir: {}          # usado pelo entrypoint; evita "Permission denied"

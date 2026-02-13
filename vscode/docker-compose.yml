@@ -1,0 +1,97 @@
+version: "3.7"
+
+services:
+  init-host:
+    image: alpine:3.21
+    restart: "no"
+    environment:
+      GIT_USER_NAME: "${GIT_USER_NAME:-lmbalcao}"
+      GIT_USER_EMAIL: "${GIT_USER_EMAIL:-lmbalcao@gmail.com}"
+      GITHUB_PAT: "${GITHUB_PAT:-PATPATPAT}"
+      AGE_PRIVATE_KEY: "${AGE_PRIVATE_KEY:-KEYKEYKEY}"
+
+    # GLOBAL
+    volumes:
+      - /opt/config:/opt/config
+      - /opt/scripts:/opt/scripts
+      - /opt/secrets:/opt/secrets
+      - /mnt/data:/mnt/data
+
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+
+        echo "### Instalação de dependências base ###"
+        apk add --no-cache ca-certificates curl bash git sudo
+        echo "# OK #"
+
+        echo "### Criar estrutura GLOBAL ###"
+        mkdir -p \
+          /opt/config \
+          /mnt/data \
+          /opt/scripts \
+          /opt/secrets
+        echo "# OK #"
+
+        echo "### Definir permissões GLOBAIS UID:GID 1000:1000 ###"
+        chown -R 1000:1000 /opt/config /opt/scripts /opt/secrets /mnt/data || true
+        echo "# OK #"
+
+        echo "### Criar estrutura PARTICULAR ###"
+        mkdir -p \
+          /opt/config/bin \
+          /opt/config/backup \
+          /opt/config/custom-cont-init.d \
+          /opt/config/.config \
+          /opt/config/.config/Code \
+          /opt/config/.config/Code/User \
+          /opt/config/.config/sops \
+          /opt/config/.config/sops/age \
+          /opt/config/.local \
+          /opt/config/.local/share \
+          /opt/config/.local/share/code-server \
+          /opt/config/.local/share/code-server/User \
+          /opt/config/.local/share/code-server/extensions \
+          /mnt/data/workspace \
+          /opt/scripts/perfil
+        echo "# OK #"
+
+        echo "### Definir permissões PARTICULARES UID:GID 1000:1000 ###"
+        chown -R 1000:1000 /opt/config /opt/scripts /opt/secrets /mnt/data || true
+        echo "# OK #"
+
+        echo "##############################################"
+        echo "#                                            #"
+        echo "# TODO:                                      #"
+        echo "# 1. Dentro do contentor vscode:             #"
+        echo "#    ir a /opt/scripts/                      #"
+        echo "#    executar restaura_backup.sh             #"
+        echo "# 2. crontab -e e adicionar:                 #"
+        echo "#    0 2 * * * /opt/scripts/backup_config.sh #"
+        echo "# 3. Reiniciar contentor (opcional)          #"
+        echo "##############################################"
+
+  code-server:
+    image: lscr.io/linuxserver/code-server:latest
+    container_name: code-server
+    depends_on:
+      - init-host
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Europe/Lisbon
+      - PASSWORD=password
+      - SUDO_PASSWORD=password
+      - PROXY_DOMAIN=vscode.lbtec.org
+
+    volumes:
+      - /opt/config:/config
+      - /opt/scripts:/opt/scripts
+      - /opt/secrets:/opt/secrets
+      - /mnt/data:/mnt/data
+
+    ports:
+      - "8443:8443"
+    restart: unless-stopped

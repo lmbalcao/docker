@@ -1,0 +1,60 @@
+version: "3.8"
+
+services:
+  init-host:
+    image: alpine:3.21
+    container_name: sftpgo_init
+    restart: "no"
+    volumes:
+      - /mnt/data:/mnt/data
+      - /opt/config:/opt/config
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - |
+        set -eu
+
+        echo "### [init-host] Criação de diretórios base para SFTPGo ###"
+        mkdir -p \
+          /mnt/data \
+          /opt/config/sftpgo
+
+        echo "### [init-host] Aplicar permissões (UID:GID = 1007:1007) ###"
+        chown -R 1010:1010 /mnt/data /opt/config/sftpgo
+        chmod -R 775 /mnt/data /opt/config/sftpgo
+
+        echo "### [init-host] Concluído ###"
+
+  sftpgo:
+    image: drakkan/sftpgo:v2.6.6-distroless-slim
+    container_name: sftpgo
+    user: "1010:1010"
+    restart: unless-stopped
+    depends_on:
+      - init-host
+    environment:
+      TZ: Europe/Lisbon
+      SFTPGO_HTTPD__BINDINGS__0__ADDRESS: "0.0.0.0"
+      SFTPGO_HTTPD__BINDINGS__0__PORT: "8080"
+      SFTPGO_SFTPD__BINDINGS__0__ADDRESS: "0.0.0.0"
+      SFTPGO_SFTPD__BINDINGS__0__PORT: "2022"
+    volumes:
+      - /mnt/data:/srv/sftpgo
+      - /opt/config/sftpgo:/var/lib/sftpgo
+    ports:
+      - "2022:2022"
+      - "8081:8080"
+
+  dockerproxy:
+    image: tecnativa/docker-socket-proxy:latest
+    container_name: dockerproxy
+    restart: unless-stopped
+    environment:
+      - CONTAINERS=1   # necessário para listar/ler stats dos contentores
+      - SYSTEM=1       # algumas UIs consultam /info
+      - POST=0         # bloqueia ações destrutivas
+      - DELETE=0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "0.0.0.0:2375:2375"   # escuta em 2375/TCP

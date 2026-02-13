@@ -1,0 +1,126 @@
+version: "3.8"
+
+services:
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    ports:
+      - "6767:6767"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/bazarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+    restart: unless-stopped
+
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    ports:
+      - "8989:8989"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/sonarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+    restart: unless-stopped
+
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    ports:
+      - "7878:7878"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/radarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+    restart: unless-stopped
+
+  lidarr:
+    image: lscr.io/linuxserver/lidarr:latest
+    container_name: lidarr
+    ports:
+      - "8686:8686"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/lidarr:/config
+      - /mnt/nas/media:/media
+      - /mnt/nas/downloads:/downloads
+      - /mnt/nas/downloads:/data/downloads
+    restart: unless-stopped
+
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    ports:
+      - "9696:9696"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/prowlarr:/config
+      - /mnt/nas/downloads:/downloads
+    restart: unless-stopped
+
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    ports:
+      - "8096:8096"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/jellyfin:/config
+      - /mnt/nas/media:/media
+      # - /dev/dri:/dev/dri   # comentado conforme pedido
+    restart: unless-stopped
+
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - LOG_LEVEL=debug
+      - TZ=Europe/Lisbon
+      - PORT=5055
+    ports:
+      - "5055:5055"
+    volumes:
+      - /opt/jellyseerr/config:/app/config
+    healthcheck:
+      test: wget --no-verbose --tries=1 --spider http://localhost:5055/api/v1/status || exit 1
+      start_period: 20s
+      timeout: 3s
+      interval: 15s
+      retries: 3
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    ports:
+      - "8191:8191"
+    environment:
+      - PUID=1001
+      - PGID=1001
+      - TZ=Europe/Lisbon
+    volumes:
+      - /opt/flaresolverr:/config
+    restart: unless-stopped
