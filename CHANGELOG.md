@@ -1,4 +1,9 @@
 
+## [v3.0.1] - 2026-03-06
+
+- security: sanitize secrets and add secret-scan workflow
+
+
 ## [v3.0.0] - 2026-03-06
 
 - chore: release v2.0.1
