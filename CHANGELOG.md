@@ -1,4 +1,17 @@
 
+## [v3.0.0] - 2026-03-06
+
+- chore: release v2.0.1
+- .
+- chore: release v2.0.0
+- b
+- update: teste global update
+- feat: teste global feat
+- fix: teste global fix
+- chore: apply repository template (forgejo actions + standards)
+- Initial commit
+
+
 ## [v2.0.1] - 2026-03-05
 
 - .
