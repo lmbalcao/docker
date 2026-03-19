@@ -1,3 +1,6 @@
+# Changelog
+
+All notable changes to this repository will be documented in this file.
 
 ## [v3.0.1] - 2026-03-06
 
@@ -41,4 +44,8 @@ Regras de bump (Custom SemVer):
 - PATCH: fix: (e por omissão tudo o resto)
 
 ## [Unreleased]
-- Template inicial
+
+## [v3.0.2] - 2026-03-19
+
+- chore: apply template baseline
+
