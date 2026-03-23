@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.4] - 2026-03-23
+## [v3.0.5] - 2026-03-23
 
-- Adicionar traefik/dynamic/dashboard-auth.yml
+- Adicionar traefik/dynamic/dashboard.yml
 
