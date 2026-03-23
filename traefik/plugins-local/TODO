@@ -1,0 +1,52 @@
+localmente, e, dentro desta pasta deve estar clone do repo:
+
+|-- plugins-local
+|   `-- src
+|       `-- github.com
+|           `-- lmbalcao
+|               `-- traefik-proxmox-provider
+|                   |-- AGENTS.md
+|                   |-- CHANGELOG.md
+|                   |-- CODEOWNERS
+|                   |-- CONTRIBUTING.md
+|                   |-- LICENSE
+|                   |-- Makefile
+|                   |-- README.md
+|                   |-- SECURITY.md
+|                   |-- go.mod
+|                   |-- go.sum
+|                   |-- internal
+|                   |   |-- client.go
+|                   |   |-- models.go
+|                   |   |-- models.go.bak
+|                   |   `-- service_test.go
+|                   |-- provider
+|                   |   |-- provider.go
+|                   |   |-- provider.go.patch
+|                   |   `-- provider_test.go
+|                   |-- proxmox-tagger.sh
+|                   |-- scripts
+|                   |   |-- update-changelog.py
+|                   |   `-- validate-repo.sh
+|                   |-- traefik_proxmox_provider.go
+|                   `-- vendor
+|                       |-- github.com
+|                       |   `-- traefik
+|                       |       `-- genconf
+|                       |           |-- LICENSE
+|                       |           `-- dynamic
+|                       |               |-- config.go
+|                       |               |-- http_config.go
+|                       |               |-- marshaler.go
+|                       |               |-- middlewares.go
+|                       |               |-- plugins.go
+|                       |               |-- tcp_config.go
+|                       |               |-- tcp_middlewares.go
+|                       |               |-- tls
+|                       |               |   |-- certificate.go
+|                       |               |   `-- tls.go
+|                       |               |-- types
+|                       |               |   |-- domains.go
+|                       |               |   `-- tls.go
+|                       |               `-- udp_config.go
+|                       `-- modules.txt
