@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.7] - 2026-03-23
+## [v3.0.8] - 2026-03-23
 
-- Adicionar traefik/dynamic/servers-transport.yml
+- Adicionar traefik/plugins.yml
 
