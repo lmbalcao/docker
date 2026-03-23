@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.3] - 2026-03-23
+## [v3.0.4] - 2026-03-23
 
-- Modificar traefik/docker-compose.yml
+- Adicionar traefik/dynamic/dashboard-auth.yml
 
