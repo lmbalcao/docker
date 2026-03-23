@@ -1,0 +1,15 @@
+http:
+  routers:
+    traefik-dashboard:
+      rule: "Host(`xxxxx.xxxxx.xxx`)"
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - dashboard-auth
+      tls:
+        certResolver: le
+        domains:
+          - main: "xxxxx.xxx
+            sans:
+              - "*.xxxxx.xxx"
