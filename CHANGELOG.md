@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.2] - 2026-03-19
+## [v3.0.3] - 2026-03-23
 
-- chore: apply template baseline
+- Modificar traefik/docker-compose.yml
 
