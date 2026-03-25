@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.10] - 2026-03-25
+## [v3.0.11] - 2026-03-25
 
-- Modificar rdtclient/docker-compose.yml
+- Modificar bazarr/docker-compose.yml
 
