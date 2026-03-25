@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.9] - 2026-03-23
+## [v3.0.10] - 2026-03-25
 
-- Adicionar traefik/plugins-local/TODO
+- Modificar rdtclient/docker-compose.yml
 
