@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.11] - 2026-03-25
+## [v3.0.12] - 2026-03-26
 
-- Modificar bazarr/docker-compose.yml
+- Reorganiza conteúdos para legacy e atualiza compose files
 
