@@ -1,0 +1,20 @@
+
+Services:
+
+  syncthing:
+    image: lscr.io/linuxserver/syncthing:latest
+    container_name: syncthing
+    hostname: syncthing
+    environment:
+      PUID: 1006
+      PGID: 1006
+      TZ: Europe/Lisbon
+    volumes:
+      - /opt/syncthing:/config   
+      - /mnt/data:/opt/data     
+    ports:
+      - "8000:8384"
+      - "22000:22000/tcp"
+      - "22000:22000/udp"
+      - "21027:21027/udp"
+    restart: unless-stopped

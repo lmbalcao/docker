@@ -9,6 +9,7 @@ services:
     restart: unless-stopped
     volumes:
       - /opt/redis:/data
+      - /mnt/data:/opt/data
     networks:
       ntop:
         ipv4_address: 172.20.0.5
@@ -20,7 +21,7 @@ services:
     restart: unless-stopped
     ports:
       - "2055:2055/udp"
-      - "8080:8080/tcp"   # recebe NetFlow/sFlow/IPFIX dos routers/exporters
+      - "8000:8080/tcp"   # recebe NetFlow/sFlow/IPFIX dos routers/exporters
     networks:
       ntop:
         ipv4_address: 172.20.0.3
@@ -33,7 +34,7 @@ services:
       - netflow2ng
       - redis
     ports:
-      - "3000:3000"       # UI Web (http://<host>:3000)
+      - "8001:3000"       # UI Web (http://<host>:3000)
     cap_add:
       - NET_ADMIN
       - NET_RAW
@@ -48,6 +49,8 @@ services:
     # Se tiveres licença, descomenta:
     # volumes:
     #   - ./ntopng.license:/etc/ntopng.license:ro
+    volumes:
+      -  /mnt/data:/opt/data
     networks:
       ntop:
         ipv4_address: 172.20.0.2

@@ -1,61 +1,14 @@
 version: "3.8"
 
 services:
-# One-shot init: cria diretórios no HOST e aplica permissões
-  init-host:
-    image: alpine:3.21
-    restart: "no"
-    volumes:
-      - /opt:/opt
-      - /mnt:/mnt
-    entrypoint:
-      - /bin/sh
-      - -lc
-      - |
-        set -eu
-        
-        # Criar diretórios
-        mkdir -p \
-          /opt/redisdata \
-          /opt/pgdata \
-          /opt/paperless \
-          /opt/scripts \
-          /opt/secrets \
-          /mnt/data/media \
-          /mnt/data/export \
-          /mnt/data/consume
 
-        # Permissões PostgreSQL (user postgres:1005)
-        chown -R 999:1005 /opt/pgdata || true
-        find /opt/pgdata -type d -exec chmod 700 {} \; || true
-        find /opt/pgdata -type f -exec chmod 600 {} \; || true
-
-        # Permissões Redis (user redis)
-        chown -R 999:999 /opt/redisdata || true
-        find /opt/redisdata -type d -exec chmod 755 {} \; || true
-        find /opt/redisdata -type f -exec chmod 644 {} \; || true
-
-        # Permissões Paperless (UID/GID 1005)
-        chown -R 1005:1005 /opt/paperless || true
-        chmod 755 /opt/paperless || true
-
-        # Dados de documentos (UID/GID 1005)
-        chown -R 1005:1005 \
-          /mnt/data/media \
-          /mnt/data/export \
-          /mnt/data/consume || true
-
-        # Scripts (UID/GID 1005)
-        chown -R 1005:1005 /opt/scripts || true
-
-        # Secrets (root only)
-        chown root:root /opt/secrets || true
-        chmod 700 /opt/secrets || true
   broker:
     image: docker.io/library/redis:8
     restart: unless-stopped
     volumes:
       - /opt/redisdata:/data
+      - /mnt/data:/opt/data
+
     healthcheck:
       test: ["CMD", "redis-cli", "PING"]
       interval: 10s
@@ -74,6 +27,8 @@ services:
       POSTGRES_PASSWORD: "paperless"
     volumes:
       - /opt/pgdata:/var/lib/postgresql/data
+      - /mnt/data:/opt/data
+
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U paperless -d paperless"]
       interval: 10s
@@ -145,3 +100,4 @@ services:
       - /mnt/data/media:/usr/src/paperless/media
       - /mnt/data/export:/usr/src/paperless/export
       - /mnt/data/consume:/usr/src/paperless/consume
+   

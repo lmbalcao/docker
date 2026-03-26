@@ -5,13 +5,14 @@ services:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
     ports:
-      - "7878:7878"
+      - "8007:7878"
     environment:
       PUID: 1001
       PGID: 1001
       TZ: Europe/Lisbon
     volumes:
       - /opt/radarr:/config
+      - /mnt/data:/opt/data
       - /mnt/nas/media:/media
       - /mnt/nas/downloads:/downloads
     restart: unless-stopped
