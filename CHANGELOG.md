@@ -45,7 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.2] - 2026-03-19
+## [v3.0.12] - 2026-03-26
 
-- chore: apply template baseline
+- Reorganiza conteúdos para legacy e atualiza compose files
 

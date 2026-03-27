@@ -58,8 +58,8 @@ services:
     container_name: immich_server
     image: ghcr.io/immich-app/immich-server:release
     volumes:
-      - /mnt/data:/data
       - /etc/localtime:/etc/localtime:ro
+      - /mnt/data:/opt/data
     environment:  
       TZ: Europe/Lisbon
       DB_HOST: database
@@ -71,7 +71,7 @@ services:
       REDIS_PORT: 6379
       MACHINE_LEARNING_URL: http://immich-machine-learning:3003  
     ports:
-      - '2283:2283'
+      - '8000:2283'
     depends_on:
       - redis
       - database

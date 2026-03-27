@@ -6,7 +6,7 @@ services:
     image: therobbielee/alertmanager-ntfy-relay:latest
     container_name: alertmanager-ntfy-relay
     ports:
-      - "8500:8080"
+      - "8000:8080"
     restart: unless-stopped
     volumes:
       - "/opt/monitoring/ntfy-relay/message_template.tmpl:/app/message_template.tmpl"
@@ -38,14 +38,14 @@ services:
       - grafana-data:/var/lib/grafana
       - /opt/monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
     ports:
-      - "3000:3000"
+      - "8001:8001"
     depends_on:
       prometheus:
         condition: service_healthy
       loki:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8001/api/health"]
       interval: 15s
       timeout: 3s
       retries: 20
@@ -63,9 +63,9 @@ services:
       - /opt/monitoring/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "8002:8002"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/ready"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8002/-/ready"]
       interval: 10s
       timeout: 3s
       retries: 30
@@ -81,9 +81,9 @@ services:
       - /opt/monitoring/alertmanager:/etc/alertmanager:ro
       - alertmanager-data:/alertmanager
     ports:
-      - "9093:9093"
+      - "8003:8003"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9093/-/ready"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8003/-/ready"]
       interval: 10s
       timeout: 3s
       retries: 30
@@ -97,9 +97,9 @@ services:
       - /opt/monitoring/loki:/etc/loki:ro
       - loki-data:/loki
     ports:
-      - "3100:3100"
+      - "8004:8004"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8004/ready"]
       interval: 10s
       timeout: 3s
       retries: 30
@@ -116,7 +116,7 @@ services:
     ports:
       - "1514:1514/tcp"
       - "1514:1514/udp"
-      - "9080:9080"
+      - "8005:9080"
     depends_on:
       loki:
         condition: service_healthy
@@ -131,9 +131,9 @@ services:
     cap_add:
       - NET_RAW
     ports:
-      - "9115:9115"
+      - "8006:8006"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:9115/metrics"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8006/metrics"]
       interval: 10s
       timeout: 3s
       retries: 30

@@ -1,37 +1,83 @@
-version: "3.9"
-
 services:
   traefik:
-    image: traefik:v3
-    container_name: traefik
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--api.dashboard=true"
-      - "--api.insecure=true"        # apenas para uso interno
+    image: traefik:v3.2
+    container_name: traefik-int
+    restart: unless-stopped
+
     ports:
       - "80:80"
-      - "8080:8080"
+      - "443:443"
+      - "8080:8080"   # GUI
+    env_file:
+      - /opt/traefik/.env
+
+    command:
+      - --entrypoints.web.address=:80
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.traefik.address=:8080
+
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.file.directory=/dynamic
+      - --providers.file.watch=true
+      - --providers.plugin.traefik-proxmox-provider.pollInterval=30s
+      - --providers.plugin.traefik-proxmox-provider.apiEndpoint=${PROXMOX_API_ENDPOINT}
+      - --providers.plugin.traefik-proxmox-provider.apiTokenId=${PROXMOX_TOKEN_ID}
+      - --providers.plugin.traefik-proxmox-provider.apiToken=${PROXMOX_TOKEN_SECRET}
+      - --providers.plugin.traefik-proxmox-provider.apiLogging=debug
+      - --providers.plugin.traefik-proxmox-provider.apiValidateSSL=false
+      - --providers.plugin.traefik-proxmox-provider.labelPrefix=traefik-int.
+      - --api.dashboard=true
+      - --api.insecure=true
+
+#      - --log.level=DEBUG
+#      - --log.filepath=/logs/traefik.log
+#      - --accesslog=true
+#      - --accesslog.filepath=/logs/access.log
+
+      # ACME (Let's Encrypt) - DNS-01 via Cloudflare
+      - --certificatesresolvers.le.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53
+      - --certificatesresolvers.le.acme.email=lmbalcao@gmail.com
+      - --certificatesresolvers.le.acme.storage=/data/acme.json
+      - --certificatesresolvers.le.acme.dnschallenge=true
+      - --certificatesresolvers.le.acme.dnschallenge.provider=cloudflare
+      - --certificatesresolvers.le.acme.dnschallenge.delaybeforecheck=10
+
+      # Force SSL (HTTP -> HTTPS)
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+
+      # Plugins (static)
+      - --experimental.plugins.traefik-get-real-ip.modulename=github.com/Paxxs/traefik-get-real-ip
+      - --experimental.plugins.traefik-get-real-ip.version=v1.0.4
+      - --experimental.plugins.traefik-plugin-geoblock.modulename=github.com/nscuro/traefik-plugin-geoblock
+      - --experimental.plugins.traefik-plugin-geoblock.version=v0.14.0
+      - --experimental.plugins.fail2ban.modulename=github.com/tomMoulard/fail2ban
+      - --experimental.plugins.fail2ban.version=v0.8.9
+      - --experimental.plugins.traefik-modsecurity-plugin.modulename=github.com/acouvreur/traefik-modsecurity-plugin
+      - --experimental.plugins.traefik-modsecurity-plugin.version=v1.3.0
+      - --experimental.localPlugins.traefik-proxmox-provider.modulename=github.com/lmbalcao/traefik-proxmox-provider
+
     volumes:
-      - ./traefik.yml:/etc/traefik/traefik.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/traefik/data:/data
+      - /opt/traefik/dynamic:/dynamic
+      - /opt/traefik/logs:/logs
+      - /opt/traefik/plugins-local:/plugins-local
+
     networks:
-      - traefik_proxy
-    deploy:
-      mode: replicated
-      replicas: 1
-      placement:
-        constraints:
-          - node.hostname == traefik      # garante execução apenas neste host
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dashboard.rule=Host(`traefik.lbtec.org`)"
-      - "traefik.http.routers.dashboard.service=api@internal"
-      - "traefik.http.routers.dashboard.entrypoints=web"
+      - traefik
+
+  waf:
+    image: owasp/modsecurity-crs:nginx
+    container_name: waf
+    restart: unless-stopped
+    environment:
+      - TZ=Europe/Lisbon
+      - MODSEC_RULE_ENGINE=DetectionOnly
+    networks:
+      - traefik
 
 networks:
-  traefik_proxy:
-    name: traefik_proxy
-    external: true
+  traefik:
+    name: traefik

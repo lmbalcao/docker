@@ -1,31 +1,4 @@
-version: "3.8"
-
 services:
-  # init-host:
-  #   image: alpine:3.21
-  #   container_name: rundeck-init-host
-  #   restart: "no"
-  #   volumes:
-  #     - /opt/rundeck:/opt/rundeck
-  #   entrypoint:
-  #     - /bin/sh
-  #     - -lc
-  #     - |
-  #       set -eu
-  #       echo "### Instalação de dependências base ###"
-  #       apk add --no-cache ca-certificates curl bash git sudo
-  #       echo "# OK #"
-
-  #       echo "### Criar estrutura GLOBAL ###"
-  #       mkdir -p \
-  #         /opt/rundeck \
-  #         /opt/rundeck/configs
-  #       echo "# OK #"
-
-  #       echo "### Definir permissões GLOBAIS UID:GID 1000:0 (1000:root) ###"
-  #       chown -R 1000:0 /opt/rundeck || true
-  #       echo "# OK #"
-
   postgres:
     image: postgres:15
     container_name: rundeck-postgres
@@ -39,6 +12,7 @@ services:
       TZ: "Europe/Lisbon"
     volumes:
       - /opt/rundeck/rundeck-db-data:/var/lib/postgresql/data
+      - /mnt/data:/opt/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U rundeck -d rundeck -q || exit 1"]
       interval: 10s
@@ -54,7 +28,7 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "4440:4440"
+      - "8000:4440"
     environment:
       RUNDECK_DATABASE_DRIVER: "org.postgresql.Driver"
       RUNDECK_DATABASE_URL: "jdbc:postgresql://postgres:5432/rundeck"
@@ -71,6 +45,7 @@ services:
       - ${RUNDECK_LICENSE_FILE:-/dev/null}:/home/rundeck/etc/rundeckpro-license.key:ro
       - data:/home/rundeck/server/data
       - /opt/rundeck/configs:/home/rundeck/configs
+      - /mnt/data:/opt/data
 
 volumes:
   data:

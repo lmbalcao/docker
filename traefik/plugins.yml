@@ -1,0 +1,47 @@
+http:
+  middlewares:
+
+    my-traefik-get-real-ip:
+      plugin:
+        traefik-get-real-ip:
+          Proxy:
+            - proxyHeadername: X-From-Cdn
+              proxyHeadervalue: cdn1
+              realIP: X-Forwarded-For
+            - proxyHeadername: X-From-Cdn
+              proxyHeadervalue: cdn2
+              realIP: Client-Ip
+            - proxyHeadername: X-From-Cdn
+              proxyHeadervalue: cdn3
+              realIP: Cf-Connecting-Ip
+              OverwriteXFF: true
+            - proxyHeadername: "*"
+              realIP: RemoteAddr
+          deny403OnFail: false
+          enableLog: false
+
+    my-traefik-plugin-geoblock:
+      plugin:
+        traefik-plugin-geoblock:
+          enabled: false
+
+    my-fail2ban:
+      plugin:
+        fail2ban:
+          allowlist:
+            ip: "::1,127.0.0.1"
+          denylist:
+            ip: "192.168.0.0/24"
+          rules:
+            bantime: "3h"
+            enabled: "true"
+            findtime: "10m"
+            maxretry: "4"
+            statuscode: "400,401,403-499"
+
+    my-traefik-modsecurity-plugin:
+      plugin:
+        traefik-modsecurity-plugin:
+          MaxBodySize: "10485760"
+          ModsecurityUrl: "http://waf:80"
+          TimeoutMillis: "2000"

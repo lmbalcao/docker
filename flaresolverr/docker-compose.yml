@@ -5,11 +5,12 @@ services:
     image: ghcr.io/flaresolverr/flaresolverr:latest
     container_name: flaresolverr
     ports:
-      - "8191:8191"
+      - "8001:8191"
     environment:
       PUID: 1001
       PGID: 1001
       TZ: Europe/Lisbon
     volumes:
       - /opt/flaresolverr:/config
+      - /mnt/data:/opt/data
     restart: unless-stopped

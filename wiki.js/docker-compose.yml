@@ -10,6 +10,8 @@ services:
     restart: unless-stopped
     volumes:
       - db-data:/var/lib/postgresql/data
+      - /mnt/data:/opt/data
+
 
   wiki:
     image: ghcr.io/requarks/wiki:2

@@ -1,5 +1,3 @@
-version: "3.7"
-
 services:
   init-host:
     image: alpine:3.21
@@ -12,9 +10,6 @@ services:
 
     # GLOBAL
     volumes:
-      - /opt/config:/opt/config
-      - /opt/scripts:/opt/scripts
-      - /opt/secrets:/opt/secrets
       - /mnt/data:/mnt/data
 
     entrypoint:
@@ -88,10 +83,8 @@ services:
 
     volumes:
       - /opt/config:/config
-      - /opt/scripts:/opt/scripts
-      - /opt/secrets:/opt/secrets
       - /mnt/data:/mnt/data
 
     ports:
-      - "8443:8443"
+      - "8000:8443"
     restart: unless-stopped

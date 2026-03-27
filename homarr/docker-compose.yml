@@ -1,48 +1,4 @@
 services:
-
-  # init-host:
-  #   image: alpine:3.21
-  #   restart: "no"
-
-  #   # Mapear para os MESMOS caminhos que o script usa:
-  #   volumes:
-  #     - /opt/config:/opt/config
-  #     - /opt/scripts:/opt/scripts
-  #     - /opt/secrets:/opt/secrets
-  #     - /mnt/datadata:/mnt/datadata
-
-  #   entrypoint:
-  #     - /bin/sh
-  #     - -lc
-  #     - |
-  #       set -eu
-
-  #       echo "### Instalação de dependências base ###"
-  #       apk add --no-cache ca-certificates curl bash git sudo
-  #       echo "# OK #"
-
-  #       echo "### Criar estrutura GLOBAL ###"
-  #       mkdir -p \
-  #         /opt/config \
-  #         /mnt/datadata \
-  #         /opt/scripts \
-  #         /opt/secrets
-  #       echo "# OK #"
-
-  #       echo "### Definir permissões GLOBAIS UID:GID 1002:1002 ###"
-  #       chown -R 1002:1002 /opt/config /opt/scripts /opt/secrets /mnt/datadata || true
-  #       echo "# OK #"
-
-  #       echo "### Criar estrutura PARTICULAR ###"
-  #       mkdir -p \
-  #         /opt/homarr/appdata \
-  #         /opt/config/appdata
-  #       echo "# OK #"
-
-  #       echo "### Definir permissões PARTICULARES UID:GID 1002:1002 ###"
-  #       chown -R 1002:1002 /opt/homarr /opt/config/appdata || true
-  #      echo "# OK #"
-
   homarr:
     container_name: homarr
     image: ghcr.io/homarr-labs/homarr:latest
@@ -50,8 +6,8 @@ services:
 
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /opt/homarr/appdata:/appdata
-
+      - /opt/homarr:/appdata
+      - /mnt/data:/opt/data
     environment:
       PUID: "1002"
       PGID: "1002"
@@ -81,4 +37,4 @@ services:
         max-size: "10m"
 
     ports:
-      - "7575:7575"
+      - "8002:7575"

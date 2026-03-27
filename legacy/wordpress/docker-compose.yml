@@ -5,6 +5,7 @@ services:
     container_name: wordpress
     volumes:
       - /opt/wordpress/wp-content:/var/www/html/wp-content
+      - /mnt/data:/opt/data
     environment:
       - WORDPRESS_DB_NAME=wordpress
       - WORDPRESS_TABLE_PREFIX=wp_
@@ -27,6 +28,7 @@ services:
       # This is optional!!!
       - /opt/mariadb/dump/dump.sql:/docker-entrypoint-initdb.d/dump.sql
       # # #
+      - /mnt/data:/opt/data
     environment:
       - MYSQL_ROOT_PASSWORD=password
       - MYSQL_USER=root
