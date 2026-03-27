@@ -45,7 +45,8 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.12] - 2026-03-26
+## [v3.0.13] - 2026-03-27
 
-- Reorganiza conteúdos para legacy e atualiza compose files
+- Merge branch 'master' of https://forgejo.lbtec.org/lmbalcao/docker
+- empty
 
