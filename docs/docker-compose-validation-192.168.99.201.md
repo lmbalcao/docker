@@ -15,10 +15,11 @@ Nota operacional:
 - Compose versionados encontrados no repositório: `43`
 - Compose já trabalhados:
   - `flaresolverr/docker-compose.yml`
+  - `jellyseer/docker-compose.yml`
+  - `sftpgo/docker-compose.yml`
   - `terraform/docker-compose.yml`
   - `rdtclient/docker-compose.yml`
   - `uptimekuma/docker-compose.yml` em progresso
-  - `jellyseer/docker-compose.yml` em progresso
 
 ## Compose Results
 
@@ -40,6 +41,45 @@ Nota operacional:
   - válido.
 - Estado final:
   - `OK com correções`
+
+### `jellyseer/docker-compose.yml`
+
+- Objetivo aparente: expor Jellyseerr em `8004` com configuração persistida em `/opt/jellyseerr`.
+- Resultado da 1.ª instalação:
+  - o container subiu, os logs mostraram `Server ready on port 8004`, mas o acesso externo em `http://127.0.0.1:8004/` devolvia reset.
+- Erros encontrados:
+  - o ficheiro tinha `version` obsoleto.
+  - a app anunciava `port 8004`, mas o compose publicava `8004:5055`, criando mismatch entre porta interna e externa.
+- Alterações feitas:
+  - removido o campo `version`.
+  - corrigido o mapeamento de portas para `8004:8004`.
+- Resultado do reteste:
+  - `docker compose ps` mostrou o container `healthy`.
+  - `curl http://127.0.0.1:8004/` devolveu `HTTP/1.1 307 Temporary Redirect` para `/setup`, comportamento esperado de bootstrap inicial.
+- Resultado da reinstalação limpa:
+  - válido, repetiu estado `healthy` e `307 /setup`.
+- Estado final:
+  - `OK com correções`
+
+### `sftpgo/docker-compose.yml`
+
+- Objetivo aparente: expor SFTPGo em `2022` e UI web em `8000`, com sidecar `docker-socket-proxy` em `2375`.
+- Resultado da 1.ª instalação:
+  - `docker compose up -d --quiet-pull` concluiu com sucesso.
+  - o serviço principal já vem configurado para correr sem root via `user: "1010:1010"`.
+  - `docker compose ps` mostrou `sftpgo` e `dockerproxy` `Up`.
+  - logs mostraram inicialização completa do HTTP server em `8080` e do SFTP server em `2022`.
+  - `curl http://127.0.0.1:8000/web/admin/login` devolveu `HTTP/1.1 302 Found` para `/web/admin/setup`, comportamento esperado de bootstrap inicial.
+- Erros encontrados:
+  - nenhum erro funcional do compose.
+- Alterações feitas:
+  - nenhuma no repositório.
+- Resultado do reteste:
+  - válido.
+- Resultado da reinstalação limpa:
+  - válido, repetiu `302 /web/admin/setup`.
+- Estado final:
+  - `OK sem alterações`
 
 ### `terraform/docker-compose.yml`
 
@@ -95,5 +135,6 @@ Nota operacional:
 ## Files Changed So Far
 
 - `flaresolverr/docker-compose.yml`
+- `jellyseer/docker-compose.yml`
 - `rdtclient/docker-compose.yml`
 - `terraform/docker-compose.yml`
