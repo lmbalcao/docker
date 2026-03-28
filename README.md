@@ -26,7 +26,7 @@ Previsto para:
 
 ### Estrutura
 
-* Cada stack vive numa subpasta propria (ex.: `traefik/`, `forgejo/`, `nextcloud/`)
+* Cada stack vive numa subpasta propria (ex.: `forgejo/`, `nextcloud/`, `paperless/`)
 * Maioria das stacks usa `docker-compose.yml`
 
 ---
@@ -88,7 +88,9 @@ Exemplos de stacks presentes neste repositorio:
 | `nextcloud` | `docker-compose.yml` |
 | `paperless` | `docker-compose.yml` |
 | `vscode` | `docker-compose.yml` |
-| `mediasuite` | `docker-compose.yml` |
+| `immich` | `docker-compose.yml` |
+| `monitoring` | `docker-compose.yml` |
+| `sftpgo` | `docker-compose.yml` |
 
 Para listar todas as stacks com compose:
 
