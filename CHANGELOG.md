@@ -45,8 +45,7 @@ Regras de bump (Custom SemVer):
 
 ## [Unreleased]
 
-## [v3.0.14] - 2026-03-27
+## [v3.0.15] - 2026-03-28
 
-- Merge branch 'master' of https://forgejo.lbtec.org/lmbalcao/docker
-- +terraform
+- chore: normalize repository hygiene
 
