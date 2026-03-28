@@ -8,8 +8,8 @@ services:
       - TZ=Europe/Lisbon
     volumes:
       - /opt/rdtclient:/data/db
-      - /mnt/data:/data/data
-      - /mnt/downloads:/data/downloads
+      - /mnt/data/rdtclient:/data/data
+      - /mnt/downloads/rdtclient:/data/downloads
     logging:
        driver: json-file
        options:

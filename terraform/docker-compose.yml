@@ -13,7 +13,7 @@ services:
     volumes:
       - /opt/terraform/workspace:/workspace
       - /opt/terraform/data:/terraform/data
-      - opt/terraform/plugin-cache:/terraform/plugin-cache
+      - /opt/terraform/plugin-cache:/terraform/plugin-cache
       - /opt/terraform/config:/terraform/config
       - /mnt/data:/opt/data
     stdin_open: true
