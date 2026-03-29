@@ -18,5 +18,5 @@ services:
       - /mnt/data:/opt/data
     stdin_open: true
     tty: true
-    command: ["version"]
+    command: ["sh", "-c", "sleep infinity"]
     restart: "no"
