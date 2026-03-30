@@ -1,0 +1,17 @@
+networks:
+  terraform-net:
+    name: terraform-net
+    external: true
+
+services:
+  terraform-gui:
+    image: nginx:1.27-alpine
+    container_name: terraform-gui
+    ports:
+      - "80:80"
+    volumes:
+      - /opt/terraform-gui/workspace/frontend:/usr/share/nginx/html:ro
+      - /opt/terraform-gui/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    restart: unless-stopped
+    networks:
+      - terraform-net

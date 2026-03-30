@@ -1,6 +1,12 @@
+networks:
+  terraform-net:
+    name: terraform-net
+
 services:
   terraform:
-    image: hashicorp/terraform:1.13.0
+    build:
+      context: /opt/terraform
+      dockerfile: Dockerfile
     container_name: terraform
     working_dir: /workspace
 
@@ -19,4 +25,28 @@ services:
     stdin_open: true
     tty: true
     command: ["sh", "-c", "sleep infinity"]
-    restart: "no"
+    restart: unless-stopped
+    networks:
+      - terraform-net
+
+  terraform-api:
+    build:
+      context: /opt/terraform
+      dockerfile: Dockerfile.api
+    container_name: terraform-api
+    working_dir: /workspace
+
+    environment:
+      TERRAFORM_CONTAINER: terraform
+      PYTHONPATH: /workspace/tools
+    volumes:
+      - /opt/terraform/workspace:/workspace
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: ["python3", "-m", "terraform_gui_api.server", "--host", "0.0.0.0"]
+    ports:
+      - "8765:8765"
+    depends_on:
+      - terraform
+    restart: unless-stopped
+    networks:
+      - terraform-net
