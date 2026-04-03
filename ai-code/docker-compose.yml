@@ -1,0 +1,18 @@
+services:
+  ai:
+    image: node:22-slim
+    container_name: ai
+    working_dir: /workspace
+    environment:
+      PATH: "/opt/node_modules/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    volumes:
+      - /opt/ai-code/workspace:/workspace
+      - /opt/ai-code/claude:/home/node/.claude
+      - /opt/ai-code/codex:/home/node/.codex
+      - /opt/ai-code/claude.json:/home/node/.claude.json
+      - /mnt/data:/mnt/data
+      - /opt/ai-code/node_modules:/opt/node_modules
+    command: >
+      sh -c "npm install -g @anthropic-ai/claude-code @openai/codex --prefix /opt/node_modules && tail -f /dev/null"
+    stdin_open: true
+    tty: true
