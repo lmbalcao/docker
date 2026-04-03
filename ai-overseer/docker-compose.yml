@@ -1,0 +1,25 @@
+services:
+  ai-overseer:
+    container_name: ai-overseer
+    build:
+      context: https://lmbalcao:${FORGEJO_TOKEN}@forgejo.lbtec.org/lmbalcao/ai-overseer.git#main
+    restart: unless-stopped
+
+    volumes:
+      - /opt/ai-code/node_modules:/opt/node_modules:ro
+      - /opt/ai-code/claude:/root/.claude:ro
+
+    environment:
+      TZ: "${TZ:-Europe/Lisbon}"
+      AI_BIN: "/opt/node_modules/bin/claude"
+      AI_TYPE: "claude"
+      OVERSEER_PORT: "3002"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-file: "5"
+        max-size: "10m"
+
+    ports:
+      - "3002:3002"
