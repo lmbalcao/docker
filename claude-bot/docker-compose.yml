@@ -2,28 +2,27 @@ services:
   claude-bot:
     container_name: claude-bot
     build:
-      context: https://lmbalcao:${FORGEJO_TOKEN}@forgejo.lbtec.org/lmbalcao/claude-bot.git#main
+      context: https://lmbalcao:${FORGEJO_TOKEN:-}@forgejo.lbtec.org/lmbalcao/claude-bot.git#main
     restart: unless-stopped
-
+    user: "1000:1000"
     volumes:
       - /opt/claude-bot:/app/data
-      # Claude CLI binary e autenticação montados do host
-      - ${CLAUDE_BIN_HOST:-/usr/local/bin/claude}:/usr/local/bin/claude:ro
-      - ${CLAUDE_CONFIG_HOST:-/root/.claude}:/root/.claude:ro
-
+      - /opt/ai-code/workspace:/workspace
+      - /mnt/data:/mnt/data
+      - /opt/ai-code/node_modules:/opt/node_modules:ro
+      - /opt/ai-code/claude:/home/node/.claude
+      - /opt/ai-code/claude.json:/home/node/.claude.json
+      - /opt/ai-code/codex:/home/node/.codex
     environment:
       TZ: "Europe/Lisbon"
       TELEGRAM_TOKEN: "${TELEGRAM_TOKEN}"
       NOTIFY_PORT: "3000"
-      CLAUDE_BIN: "/usr/local/bin/claude"
+      CLAUDE_BIN: "/opt/node_modules/bin/claude"
       DATA_FILE: "/app/data/data.json"
-      # NOTIFY_SECRET: "${NOTIFY_SECRET}"
-
     logging:
       driver: "json-file"
       options:
         max-file: "5"
         max-size: "10m"
-
     ports:
       - "3000:3000"
