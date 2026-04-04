@@ -43,6 +43,7 @@ services:
     volumes:
       - /opt/terraform/workspace:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
+      - /opt/docker-repo:/opt/docker-repo:ro
     command: ["python3", "-m", "terraform_gui_api.server", "--host", "0.0.0.0"]
     ports:
       - "8765:8765"
