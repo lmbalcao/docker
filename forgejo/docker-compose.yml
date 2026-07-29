@@ -5,7 +5,36 @@ networks:
     driver: bridge
 
 services:
------- PostgreSQL ----------
+  # ---------- ONE-SHOT para preparar pastas/ACLs ----------
+  init-host:
+    image: alpine:3.20
+    container_name: forgejo-init
+    command: >-
+      sh -euxc '
+      mkdir -p /opt/forgejo/data /opt/forgejo/config;
+      mkdir -p /opt/forgejo-db;
+      mkdir -p /opt/forgejo-runner/data;
+      mkdir -p /opt/forgejo-dind;
+
+      # Forgejo rootless (1000:1000)
+      chown -R 1000:1000 /opt/forgejo /opt/forgejo-runner || true;
+      chmod -R u+rwX,g+rwX /opt/forgejo /opt/forgejo-runner;
+
+      # Postgres (999:999)
+      chown -R 999:999 /opt/forgejo-db || true;
+      chmod 700 /opt/forgejo-db || true;
+
+      # dind storage (root)
+      chown -R 0:0 /opt/forgejo-dind || true;
+
+      echo "[init-host] OK";'
+    volumes:
+      - /opt:/opt
+    restart: "no"
+    networks:
+      - forgejo
+
+  # ---------- PostgreSQL ----------
   db:
     image: postgres:14
     container_name: forgejo-db
@@ -13,13 +42,12 @@ services:
     environment:
       - TZ=Europe/Lisbon
       - POSTGRES_USER=forgejo
-      - POSTGRES_PASSWORD=forgejo
+      - POSTGRES_PASSWORD=${FORGEJO_DB_PASSWORD}
       - POSTGRES_DB=forgejo
     networks:
       - forgejo
     volumes:
       - /opt/forgejo-db:/var/lib/postgresql/data
-      - /mnt/data:/opt/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U forgejo -d forgejo || exit 1"]
       interval: 10s
@@ -44,7 +72,7 @@ services:
       - FORGEJO__database__HOST=db:5432
       - FORGEJO__database__NAME=forgejo
       - FORGEJO__database__USER=forgejo
-      - FORGEJO__database__PASSWD=forgejo
+      - FORGEJO__database__PASSWD=${FORGEJO_DB_PASSWORD}
       - FORGEJO__database__SSL_MODE=disable
 
       # SERVER / URLs
@@ -64,7 +92,6 @@ services:
     volumes:
       - /opt/forgejo/data:/var/lib/gitea
       - /opt/forgejo/config:/etc/gitea
-      - /mnt/data:/opt/data
       - /etc/timezone:/etc/timezone:ro
       - /etc/localtime:/etc/localtime:ro
     ports:
@@ -87,7 +114,6 @@ services:
       - forgejo
     volumes:
       - /opt/forgejo-dind:/var/lib/docker
-      - /mnt/data:/opt/data
     depends_on:
       init-host:
         condition: service_completed_successfully
@@ -105,8 +131,7 @@ services:
     volumes:
       - /opt/forgejo-runner/data:/data
       - /opt/forgejo-runner/config.yaml:/config.yaml:ro
-      - /mnt/data:/opt/data
     depends_on:
       dind:
         condition: service_started
-    command: ["/bin/sh", "-c", "sleep 5; forgejo-runner daemon --config /config.yaml"]
+    command: ["/bin/sh", "-c", "forgejo-runner daemon --config /config.yaml"]
